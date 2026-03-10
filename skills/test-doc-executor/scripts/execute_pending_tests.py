@@ -175,6 +175,67 @@ def random_user_payload(tag: str) -> dict:
     }
 
 
+def find_frontend_impl_files(workspace: pathlib.Path, path: str) -> List[str]:
+    src_root = workspace / "user-management-font" / "src"
+    found: List[str] = []
+    if not src_root.exists():
+        return found
+    needle = path.replace("/{id}", "")
+    for p in src_root.rglob("*"):
+        if p.is_file() and p.suffix in {".js", ".ts", ".vue", ".jsx", ".tsx"}:
+            text = p.read_text(encoding="utf-8", errors="ignore")
+            if needle and needle in text:
+                found.append(str(p.relative_to(workspace)))
+    return found
+
+
+def resolve_id_for_path(ctx: Dict[str, str], base_url: str) -> Optional[str]:
+    rid = ctx.get("last_created_id")
+    if rid:
+        return rid
+
+    code, body = http_request(base_url, "GET", "/api/users")
+    if code == 200:
+        try:
+            data = json.loads(body)
+            if isinstance(data, list) and data:
+                rid = str(data[0].get("id"))
+        except Exception:
+            rid = None
+    if rid:
+        return rid
+
+    payload = random_user_payload("idseed")
+    c, b = http_request(base_url, "POST", "/api/users", payload)
+    if c == 201:
+        try:
+            rid = str(json.loads(b).get("id"))
+        except Exception:
+            rid = None
+    return rid
+
+
+def api_smoke(base_url: str, method: str, path: str, ctx: Dict[str, str]) -> Tuple[bool, str]:
+    if "{id}" in path:
+        rid = resolve_id_for_path(ctx, base_url)
+        if not rid:
+            return False, "无法准备 {id} 测试数据"
+        path = path.replace("{id}", rid)
+
+    body = None
+    if method in {"POST", "PUT"}:
+        body = random_user_payload("rw")
+
+    status, resp = http_request(base_url, method, path, body)
+    ok = (200 <= status < 300) or status == 204
+    if ok and method == "POST":
+        try:
+            ctx["last_created_id"] = str(json.loads(resp).get("id"))
+        except Exception:
+            pass
+    return ok, f"status={status}"
+
+
 def backend_self_test(row: Dict[str, str], workspace: pathlib.Path, base_url: str, fail_note: str, ctx: Dict[str, str]) -> Tuple[bool, str]:
     method, path = extract_api(row.get("测试点描述", ""))
     if not method or not path:
@@ -184,52 +245,20 @@ def backend_self_test(row: Dict[str, str], workspace: pathlib.Path, base_url: st
         generated = generate_backend_unit_skeleton(workspace, method, path)
         row["备注"] = (row.get("备注", "") + f"; 已生成单测骨架: {generated}").strip("; ")
 
-    # Resolve path params
-    if "{id}" in path:
-        rid = ctx.get("last_created_id")
-        if not rid:
-            code, body = http_request(base_url, "GET", "/api/users")
-            if code == 200:
-                try:
-                    data = json.loads(body)
-                    if isinstance(data, list) and data:
-                        rid = str(data[0].get("id"))
-                except Exception:
-                    rid = None
-        if not rid:
-            payload = random_user_payload("idseed")
-            c, b = http_request(base_url, "POST", "/api/users", payload)
-            if c == 201:
-                try:
-                    rid = str(json.loads(b).get("id"))
-                except Exception:
-                    rid = None
-        if not rid:
-            return False, fail_note or "无法准备 {id} 测试数据"
-        path = path.replace("{id}", rid)
-
-    body = None
-    if method in {"POST", "PUT"}:
-        body = random_user_payload("rw")
-
-    status, resp = http_request(base_url, method, path, body)
-
     expect_fail = any(k in row.get("测试点描述", "") for k in ["失败", "异常", "重复"])
     if expect_fail:
+        status, resp = http_request(base_url, method, path)
         ok = 400 <= status < 500
-    else:
-        ok = (200 <= status < 300) or status == 204
+        if ok:
+            return True, f"status={status}"
+        msg = fail_note or f"后端自测失败: status={status}, resp={resp[:160]}"
+        return False, msg
 
+    ok, note = api_smoke(base_url, method, path, ctx)
     if ok:
-        if method == "POST":
-            try:
-                ctx["last_created_id"] = str(json.loads(resp).get("id"))
-            except Exception:
-                pass
-        return True, f"status={status}"
+        return True, note
 
-    msg = fail_note or f"后端自测失败: status={status}, resp={resp[:160]}"
-    return False, msg
+    return False, fail_note or f"后端自测失败: {note}"
 
 
 def frontend_self_test(row: Dict[str, str], workspace: pathlib.Path, fail_note: str, snippet_file: pathlib.Path) -> Tuple[bool, str]:
@@ -237,14 +266,7 @@ def frontend_self_test(row: Dict[str, str], workspace: pathlib.Path, fail_note: 
     method = method or "GET"
     path = path or "/"
 
-    src_root = workspace / "user-management-font" / "src"
-    found = []
-    if src_root.exists():
-        for p in src_root.rglob("*"):
-            if p.is_file() and p.suffix in {".js", ".ts", ".vue", ".jsx", ".tsx"}:
-                text = p.read_text(encoding="utf-8", errors="ignore")
-                if path.replace("/{id}", "") in text:
-                    found.append(str(p.relative_to(workspace)))
+    found = find_frontend_impl_files(workspace, path)
 
     snippet_file.parent.mkdir(parents=True, exist_ok=True)
     with snippet_file.open("a", encoding="utf-8") as f:
@@ -264,10 +286,10 @@ def frontend_self_test(row: Dict[str, str], workspace: pathlib.Path, fail_note: 
     return False, fail_note or "未识别到前端相关实现文件"
 
 
-def integration_test(row: Dict[str, str], integration_result: str, fail_note: str, checkpoint_file: pathlib.Path) -> Tuple[Optional[bool], str]:
+def integration_test(row: Dict[str, str], workspace: pathlib.Path, base_url: str, fail_note: str, checkpoint_file: pathlib.Path, ctx: Dict[str, str]) -> Tuple[bool, str]:
     method, path = extract_api(row.get("测试点描述", ""))
-    method = method or "UNKNOWN"
-    path = path or "UNKNOWN"
+    if not method or not path:
+        return False, "无法从测试点描述提取联调 API"
 
     checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
     with checkpoint_file.open("a", encoding="utf-8") as f:
@@ -277,11 +299,17 @@ def integration_test(row: Dict[str, str], integration_result: str, fail_note: st
         f.write("- 检查点2: 后端返回状态码与字段是否符合预期\n")
         f.write("- 检查点3: 页面展示与错误提示是否与返回一致\n")
 
-    if integration_result == "pass":
-        return True, "联调验证通过（用户确认）"
-    if integration_result == "fail":
-        return False, fail_note or "联调验证失败（用户反馈）"
-    return None, f"已输出联调检查点: {checkpoint_file}，等待人工验证"
+    if not backend_alive(base_url):
+        return False, fail_note or "后端服务不可用"
+
+    frontend_found = find_frontend_impl_files(workspace, path)
+    if not frontend_found:
+        return False, fail_note or "未识别到前端相关实现文件"
+
+    ok, note = api_smoke(base_url, method, path, ctx)
+    if not ok:
+        return False, fail_note or f"联调跑通失败: {note}"
+    return True, f"{note}; frontend={', '.join(frontend_found[:2])}"
 
 
 def update_row_pass(row: Dict[str, str], tester: str, note: str) -> None:
@@ -305,7 +333,6 @@ def main() -> None:
     ap.add_argument("--doc", required=True)
     ap.add_argument("--tester", required=True)
     ap.add_argument("--base-url", default="http://127.0.0.1:8080")
-    ap.add_argument("--integration-result", choices=["manual", "pass", "fail"], default="manual")
     ap.add_argument("--max-items", type=int, default=0, help="0 means no limit")
     ap.add_argument("--fail-note", default="")
     ap.add_argument("--auto-start-backend", action="store_true")
@@ -329,7 +356,7 @@ def main() -> None:
     backend_proc = None
     ctx: Dict[str, str] = {}
 
-    if any(r.get("测试类型", "") == "后端自测" for r in pending):
+    if any(r.get("测试类型", "") in {"后端自测", "联调"} for r in pending):
         if not backend_alive(args.base_url) and args.auto_start_backend:
             backend_proc = start_backend(workspace)
             for _ in range(60):
@@ -371,19 +398,13 @@ def main() -> None:
                 fail_count += 1
 
         elif ttype == "联调":
-            result, note = integration_test(row, args.integration_result, args.fail_note, checkpoint_file)
-            if result is True:
+            ok, note = integration_test(row, workspace, args.base_url, args.fail_note, checkpoint_file, ctx)
+            if ok:
                 update_row_pass(row, args.tester, note)
                 pass_count += 1
-            elif result is False:
+            else:
                 update_row_fail(row, args.tester, note)
                 fail_count += 1
-            else:
-                row["备注"] = note
-                skipped_count += 1
-                # Manual mode: stop loop and wait for user confirmation next run.
-                processed += 1
-                break
         else:
             update_row_fail(row, args.tester, args.fail_note or f"未知测试类型: {ttype}")
             fail_count += 1

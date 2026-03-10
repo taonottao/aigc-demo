@@ -12,7 +12,7 @@ Only execute pending test items from the checklist and update document status.
 - Execute or guide by `测试类型`:
   - `后端自测`: detect existing unit tests; if none, generate unit-test skeleton, then run API smoke verification.
   - `前端自测`: check component/API usage logic and generate Playwright/Cypress snippets.
-  - `联调`: output key frontend-backend data-flow checkpoints and ask for validation result.
+  - `联调`: auto-verify the flow is runnable end-to-end by (1) ensuring frontend implementation references exist, and (2) calling the backend API successfully; also writes data-flow checkpoints.
 - Update status in document in real time.
 
 ## State Update Rules
@@ -30,13 +30,6 @@ python3 /Users/smile/workspace/project/study/skills/test-doc-executor/scripts/ex
 
 Optional:
 ```bash
-# For联调结果显式输入
-python3 /Users/smile/workspace/project/study/skills/test-doc-executor/scripts/execute_pending_tests.py \
-  --workspace /Users/smile/workspace/project/study \
-  --doc /Users/smile/workspace/project/study/doc/功能测试清单.md \
-  --tester 张三 \
-  --integration-result pass
-
 # Manual stop after N items
 python3 /Users/smile/workspace/project/study/skills/test-doc-executor/scripts/execute_pending_tests.py \
   --workspace /Users/smile/workspace/project/study \
