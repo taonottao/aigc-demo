@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>原型图 - 用户管理</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-dot"></span> Admin Matrix</div>
+      <nav class="nav">
+        <a href="./dashboard.html">系统总览</a>
+        <a href="./organizations.html">组织管理</a>
+        <a class="active" href="./users.html">用户管理</a>
+        <a href="./role-permission.html">角色权限</a>
+        <a href="./security.html">日志与安全</a>
+        <a href="./index.html">退出登录</a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <div class="title">用户管理</div>
+          <div class="meta">左侧选择组织，右侧仅展示该组织下的直属用户（不包含子组织用户）</div>
+        </div>
+        <div class="actions">
+          <button class="btn">批量导入</button>
+          <button class="btn">批量导出</button>
+          <button class="btn primary">新增用户</button>
+        </div>
+      </header>
+
+      <section class="split-shell">
+        <article class="tree-panel">
+          <h3>组织树</h3>
+          <ul class="org-tree">
+            <li><span>集团总部</span>
+              <ul class="org-tree">
+                <li><span>研发中心</span>
+                  <ul class="org-tree">
+                    <li><span class="active-node">平台组（当前）</span></li>
+                    <li><span>应用组</span></li>
+                  </ul>
+                </li>
+                <li><span>华东运营</span></li>
+              </ul>
+            </li>
+          </ul>
+          <p class="tree-meta">当前节点：平台组，仅查询 `org_id = 平台组` 的用户。</p>
+        </article>
+
+        <article class="list-panel">
+          <h3>平台组 - 用户列表</h3>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>ID</th><th>用户名</th><th>姓名</th><th>手机号</th><th>邮箱</th><th>角色</th><th>状态</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1001</td><td>smile</td><td>张三</td><td>13800138000</td><td>smile@corp.com</td><td>超级管理员, 部门主管</td><td><span class="badge ok">启用</span></td><td>编辑 | 重置密码 | 禁用</td>
+              </tr>
+              <tr>
+                <td>1028</td><td>chen9</td><td>陈九</td><td>13700137000</td><td>chen9@corp.com</td><td>开发工程师</td><td><span class="badge ok">启用</span></td><td>编辑 | 分配角色</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="small">字段：用户名（唯一）、加密密码、姓名、手机号、邮箱、头像。支持启用/禁用、导入导出、管理员重置密码。</p>
+        </article>
+      </section>
+    </main>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>

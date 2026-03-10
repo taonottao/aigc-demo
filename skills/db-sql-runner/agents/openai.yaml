@@ -1,0 +1,4 @@
+interface:
+  display_name: "DB SQL Runner"
+  short_description: "Auto-read local config and run SQL safely"
+  default_prompt: "Read local DB config, connect automatically, and execute query/write SQL with safety checks."

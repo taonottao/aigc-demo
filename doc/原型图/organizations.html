@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>原型图 - 组织管理</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-dot"></span> Admin Matrix</div>
+      <nav class="nav">
+        <a href="./dashboard.html">系统总览</a>
+        <a class="active" href="./organizations.html">组织管理</a>
+        <a href="./users.html">用户管理</a>
+        <a href="./role-permission.html">角色权限</a>
+        <a href="./security.html">日志与安全</a>
+        <a href="./index.html">退出登录</a>
+      </nav>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <div class="title">组织管理</div>
+          <div class="meta">左侧组织树可展开，右侧仅展示当前选中组织下的直接子组织</div>
+        </div>
+        <div class="actions">
+          <button class="btn">拖拽排序</button>
+          <button class="btn">设置父级</button>
+          <button class="btn primary">新增子组织</button>
+        </div>
+      </header>
+
+      <section class="split-shell">
+        <article class="tree-panel">
+          <h3>组织树</h3>
+          <ul class="org-tree">
+            <li><span>集团总部</span>
+              <ul class="org-tree">
+                <li><span class="active-node">研发中心（当前）</span>
+                  <ul class="org-tree">
+                    <li><span>平台组</span></li>
+                    <li><span>应用组</span></li>
+                  </ul>
+                </li>
+                <li><span>华东运营</span></li>
+                <li><span>华南运营</span></li>
+              </ul>
+            </li>
+          </ul>
+          <p class="tree-meta">当前节点：研发中心，组织编码：RD-001</p>
+        </article>
+
+        <article class="list-panel">
+          <h3>研发中心 - 子组织列表</h3>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>名称</th><th>编码</th><th>负责人</th><th>排序</th><th>状态</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>平台组</td><td>RD-PLAT</td><td>王工</td><td>1</td><td><span class="badge ok">启用</span></td><td>编辑 | 新增子级 | 删除</td></tr>
+              <tr><td>应用组</td><td>RD-APP</td><td>李工</td><td>2</td><td><span class="badge ok">启用</span></td><td>编辑 | 新增子级 | 删除</td></tr>
+              <tr><td>测试组</td><td>RD-QA</td><td>赵工</td><td>3</td><td><span class="badge warn">禁用</span></td><td>编辑 | 启用</td></tr>
+            </tbody>
+          </table>
+          <p class="small">说明：本页不展示成员，仅展示选中组织的子组织列表。</p>
+        </article>
+      </section>
+    </main>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>
