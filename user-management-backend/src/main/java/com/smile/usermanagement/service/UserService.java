@@ -3,7 +3,6 @@ package com.smile.usermanagement.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.smile.usermanagement.entity.User;
 import java.util.List;
-import java.util.Map;
 
 public interface UserService extends IService<User> {
 
@@ -13,7 +12,9 @@ public interface UserService extends IService<User> {
 
     User updateUser(Long id, User user, List<Long> roleIds);
 
-    List<Long> getRoleIds(Long userId);
+    void resetPassword(Long id, String newPassword);
 
-    Map<Long, List<Long>> getRoleIdsMap(List<Long> userIds);
+    List<Long> listRoleIds(Long userId);
+
+    void replaceRoles(Long userId, List<Long> roleIds);
 }

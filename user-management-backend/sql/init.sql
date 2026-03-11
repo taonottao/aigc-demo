@@ -85,7 +85,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- 8. 初始化用户数据
 INSERT INTO sys_user (username, password, real_name, phone, email, avatar, org_id, status)
-VALUES ('smile', '123456', '张三', '13800138000', 'smile@example.com', '', 1, 1)
+VALUES ('smile-admin', '123456', '系统管理员', '13800138000', 'smile-admin@example.com', '', 1, 1)
 ON CONFLICT (username) DO NOTHING;
 
 INSERT INTO sys_user_role (user_id, role_id)

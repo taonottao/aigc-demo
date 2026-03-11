@@ -13,9 +13,8 @@ public class Role {
     private Long id;
 
     private String name;
-
     private String code;
-
+    private String description;
     private Integer status;
 
     @TableField("created_at")
@@ -48,6 +47,14 @@ public class Role {
         this.code = code;
     }
 
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
     public Integer getStatus() {
         return status;
     }
@@ -72,3 +79,4 @@ public class Role {
         this.updatedAt = updatedAt;
     }
 }
+

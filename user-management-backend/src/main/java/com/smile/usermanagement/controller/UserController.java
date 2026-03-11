@@ -1,34 +1,35 @@
 package com.smile.usermanagement.controller;
 
 import com.smile.usermanagement.dto.UserCreateRequest;
-import com.smile.usermanagement.dto.UserImportResult;
-import com.smile.usermanagement.dto.UserResponse;
 import com.smile.usermanagement.dto.UserUpdateRequest;
 import com.smile.usermanagement.entity.User;
+import com.smile.usermanagement.security.SecurityUtils;
+import com.smile.usermanagement.security.UserPrincipal;
+import com.smile.usermanagement.service.AuditService;
+import com.smile.usermanagement.service.AuthService;
 import com.smile.usermanagement.service.UserService;
+import com.smile.usermanagement.web.ReplaceIdsRequest;
 import jakarta.validation.Valid;
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.StringJoiner;
-import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -38,128 +39,166 @@ import org.springframework.web.multipart.MultipartFile;
 public class UserController {
 
     private final UserService userService;
+    private final AuthService authService;
+    private final AuditService auditService;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, AuthService authService, AuditService auditService) {
         this.userService = userService;
+        this.authService = authService;
+        this.auditService = auditService;
     }
 
     @GetMapping
-    public List<UserResponse> listUsers(@RequestParam(required = false) Long orgId,
-                                        @RequestParam(required = false) String keyword) {
-        List<User> users = userService.listByOrgAndKeyword(orgId, keyword);
-        List<Long> userIds = users.stream().map(User::getId).collect(Collectors.toList());
-        Map<Long, List<Long>> roleMap = userService.getRoleIdsMap(userIds);
-        List<UserResponse> responses = new ArrayList<>();
-        for (User user : users) {
-            responses.add(toResponse(user, roleMap.getOrDefault(user.getId(), Collections.emptyList())));
-        }
-        return responses;
+    @PreAuthorize("hasAuthority('user:view')")
+    public List<User> listUsers(@RequestParam(required = false) Long orgId,
+                                @RequestParam(required = false) String keyword) {
+        return userService.listByOrgAndKeyword(orgId, keyword);
     }
 
     @GetMapping("/{id}")
-    public UserResponse getUser(@PathVariable Long id) {
+    @PreAuthorize("hasAuthority('user:view')")
+    public User getUser(@PathVariable Long id) {
         User user = userService.getById(id);
         if (user == null) {
             throw new IllegalArgumentException("User not found: " + id);
         }
-        List<Long> roleIds = userService.getRoleIds(user.getId());
-        return toResponse(user, roleIds);
+        return user;
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('user:add')")
     @ResponseStatus(HttpStatus.CREATED)
-    public UserResponse createUser(@Valid @RequestBody UserCreateRequest request) {
+    public User createUser(@Valid @RequestBody UserCreateRequest request) {
         User user = new User();
         fillUser(user, request.getUsername(), request.getPassword(), request.getRealName(),
             request.getPhone(), request.getEmail(), request.getAvatar(), request.getOrgId(), request.getStatus());
         User created = userService.createUser(user, request.getRoleIds());
-        List<Long> roleIds = userService.getRoleIds(created.getId());
-        return toResponse(created, roleIds);
+        UserPrincipal principal = SecurityUtils.getCurrentUser();
+        if (principal != null) {
+            auditService.opLog(principal.id(), principal.username(), "USER", "CREATE", "userId=" + created.getId());
+        }
+        return created;
     }
 
     @PutMapping("/{id}")
-    public UserResponse updateUser(@PathVariable Long id, @Valid @RequestBody UserUpdateRequest request) {
+    @PreAuthorize("hasAuthority('user:edit')")
+    public User updateUser(@PathVariable Long id, @Valid @RequestBody UserUpdateRequest request) {
         User user = new User();
         fillUser(user, request.getUsername(), request.getPassword(), request.getRealName(),
             request.getPhone(), request.getEmail(), request.getAvatar(), request.getOrgId(), request.getStatus());
         User updated = userService.updateUser(id, user, request.getRoleIds());
-        List<Long> roleIds = userService.getRoleIds(updated.getId());
-        return toResponse(updated, roleIds);
+        UserPrincipal principal = SecurityUtils.getCurrentUser();
+        if (principal != null) {
+            auditService.opLog(principal.id(), principal.username(), "USER", "UPDATE", "userId=" + updated.getId());
+        }
+        return updated;
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('user:delete')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void deleteUser(@PathVariable Long id) {
+    public void deleteUser(@PathVariable Long id, @RequestHeader(value = "X-Second-Verify", required = false) String token) {
+        UserPrincipal principal = SecurityUtils.getCurrentUser();
+        if (principal != null) {
+            authService.assertSecondVerified(principal.id(), token);
+        }
         boolean removed = userService.removeById(id);
         if (!removed) {
             throw new IllegalArgumentException("User not found: " + id);
         }
+        if (principal != null) {
+            auditService.opLog(principal.id(), principal.username(), "USER", "DELETE", "userId=" + id);
+        }
     }
 
-    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public UserImportResult importUsers(@RequestParam("file") MultipartFile file,
-                                        @RequestParam(required = false) Long defaultOrgId) throws IOException {
-        if (file.isEmpty()) {
-            throw new IllegalArgumentException("Import file is empty");
+    @PostMapping("/{id}/reset-password")
+    @PreAuthorize("hasAuthority('user:edit')")
+    public Map<String, Object> resetPassword(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        String newPassword = body == null ? null : (String) body.get("newPassword");
+        userService.resetPassword(id, newPassword);
+        UserPrincipal principal = SecurityUtils.getCurrentUser();
+        if (principal != null) {
+            auditService.opLog(principal.id(), principal.username(), "USER", "RESET_PASSWORD", "userId=" + id);
         }
-        UserImportResult result = new UserImportResult();
-        try (BufferedReader reader = new BufferedReader(
-            new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            int row = 0;
-            while ((line = reader.readLine()) != null) {
-                row++;
-                if (!org.springframework.util.StringUtils.hasText(line)) {
-                    continue;
-                }
-                if (row == 1 && line.toLowerCase().contains("username")) {
-                    continue;
-                }
-                result.setTotal(result.getTotal() + 1);
-                try {
-                    ImportRow parsed = parseImportLine(line, defaultOrgId);
-                    User user = new User();
-                    fillUser(user, parsed.username, parsed.password, parsed.realName,
-                        parsed.phone, parsed.email, parsed.avatar, parsed.orgId, parsed.status);
-                    userService.createUser(user, parsed.roleIds);
-                    result.setSuccess(result.getSuccess() + 1);
-                } catch (Exception ex) {
-                    result.setFailed(result.getFailed() + 1);
-                    result.addError("Row " + row + ": " + ex.getMessage());
-                }
-            }
+        return Map.of("ok", true);
+    }
+
+    @GetMapping("/{id}/roles")
+    @PreAuthorize("hasAuthority('user:view')")
+    public List<Long> listUserRoles(@PathVariable Long id) {
+        return userService.listRoleIds(id);
+    }
+
+    @PutMapping("/{id}/roles")
+    @PreAuthorize("hasAuthority('role:assign')")
+    public Map<String, Object> replaceUserRoles(@PathVariable Long id, @RequestBody ReplaceIdsRequest request) {
+        userService.replaceRoles(id, request == null ? null : request.getIds());
+        UserPrincipal principal = SecurityUtils.getCurrentUser();
+        if (principal != null) {
+            auditService.opLog(principal.id(), principal.username(), "USER", "REPLACE_ROLES", "userId=" + id);
         }
-        return result;
+        return Map.of("ok", true);
     }
 
     @GetMapping(value = "/export", produces = "text/csv")
-    public ResponseEntity<byte[]> exportUsers(@RequestParam(required = false) Long orgId,
-                                              @RequestParam(required = false) String keyword) {
-        List<User> users = userService.listByOrgAndKeyword(orgId, keyword);
-        List<Long> userIds = users.stream().map(User::getId).collect(Collectors.toList());
-        Map<Long, List<Long>> roleMap = userService.getRoleIdsMap(userIds);
-        StringBuilder csv = new StringBuilder();
-        csv.append("username,password,real_name,phone,email,avatar,org_id,status,role_ids,created_at,updated_at\n");
-        for (User user : users) {
-            List<Long> roleIds = roleMap.getOrDefault(user.getId(), Collections.emptyList());
-            csv.append(escapeCsv(user.getUsername())).append(',')
-                .append("").append(',')
-                .append(escapeCsv(user.getRealName())).append(',')
-                .append(escapeCsv(user.getPhone())).append(',')
-                .append(escapeCsv(user.getEmail())).append(',')
-                .append(escapeCsv(user.getAvatar())).append(',')
-                .append(user.getOrgId() == null ? "" : user.getOrgId()).append(',')
-                .append(user.getStatus() == null ? "" : user.getStatus()).append(',')
-                .append(escapeCsv(joinRoleIds(roleIds))).append(',')
-                .append(formatTime(user.getCreatedAt())).append(',')
-                .append(formatTime(user.getUpdatedAt()))
-                .append("\n");
+    @PreAuthorize("hasAuthority('user:export')")
+    public ResponseEntity<String> exportUsers(@RequestParam(required = false) Long orgId) {
+        List<User> users = userService.listByOrgAndKeyword(orgId, null);
+        StringBuilder sb = new StringBuilder();
+        sb.append("id,username,realName,phone,email,avatar,orgId,status\n");
+        for (User u : users) {
+            sb.append(u.getId()).append(',')
+                .append(csv(u.getUsername())).append(',')
+                .append(csv(u.getRealName())).append(',')
+                .append(csv(u.getPhone())).append(',')
+                .append(csv(u.getEmail())).append(',')
+                .append(csv(u.getAvatar())).append(',')
+                .append(u.getOrgId()).append(',')
+                .append(u.getStatus() == null ? 1 : u.getStatus())
+                .append('\n');
         }
-        String filename = "users_export.csv";
         return ResponseEntity.ok()
-            .header("Content-Disposition", "attachment; filename=" + filename)
-            .contentType(MediaType.parseMediaType("text/csv"))
-            .body(csv.toString().getBytes(StandardCharsets.UTF_8));
+            .contentType(MediaType.valueOf("text/csv"))
+            .body(sb.toString());
+    }
+
+    @PostMapping(value = "/import", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('user:import')")
+    public Map<String, Object> importUsers(@RequestPart("file") MultipartFile file) throws Exception {
+        int created = 0;
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), StandardCharsets.UTF_8))) {
+            String header = reader.readLine();
+            if (header == null) {
+                throw new IllegalArgumentException("Empty CSV");
+            }
+            int offset = header.trim().toLowerCase().startsWith("id,") ? 1 : 0;
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (!StringUtils.hasText(line)) {
+                    continue;
+                }
+                String[] parts = line.split(",", -1);
+                if (parts.length < offset + 8) {
+                    continue;
+                }
+                User user = new User();
+                user.setUsername(parts[offset].trim());
+                user.setPassword(parts[offset + 1].trim()); // allow raw; service will encode
+                user.setRealName(parts[offset + 2].trim());
+                user.setPhone(parts[offset + 3].trim());
+                user.setEmail(parts[offset + 4].trim());
+                user.setAvatar(parts[offset + 5].trim());
+                user.setOrgId(Long.parseLong(parts[offset + 6].trim()));
+                user.setStatus(Integer.parseInt(parts[offset + 7].trim()));
+                userService.createUser(user, null);
+                created++;
+            }
+        }
+        UserPrincipal principal = SecurityUtils.getCurrentUser();
+        if (principal != null) {
+            auditService.opLog(principal.id(), principal.username(), "USER", "IMPORT", "count=" + created);
+        }
+        return Map.of("created", created);
     }
 
     private void fillUser(User user, String username, String password, String realName,
@@ -174,132 +213,14 @@ public class UserController {
         user.setStatus(status);
     }
 
-    private UserResponse toResponse(User user, List<Long> roleIds) {
-        UserResponse response = new UserResponse();
-        response.setId(user.getId());
-        response.setUsername(user.getUsername());
-        response.setRealName(user.getRealName());
-        response.setPhone(user.getPhone());
-        response.setEmail(user.getEmail());
-        response.setAvatar(user.getAvatar());
-        response.setOrgId(user.getOrgId());
-        response.setStatus(user.getStatus());
-        response.setCreatedAt(user.getCreatedAt());
-        response.setUpdatedAt(user.getUpdatedAt());
-        response.setRoleIds(roleIds);
-        return response;
-    }
-
-    private String escapeCsv(String value) {
+    private String csv(String value) {
         if (value == null) {
             return "";
         }
-        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
-            return "\"" + value.replace("\"", "\"\"") + "\"";
+        String v = value.replace("\"", "\"\"");
+        if (v.contains(",") || v.contains("\n") || v.contains("\r")) {
+            return "\"" + v + "\"";
         }
-        return value;
-    }
-
-    private String joinRoleIds(List<Long> roleIds) {
-        if (roleIds == null || roleIds.isEmpty()) {
-            return "";
-        }
-        StringJoiner joiner = new StringJoiner("|");
-        for (Long roleId : roleIds) {
-            joiner.add(String.valueOf(roleId));
-        }
-        return joiner.toString();
-    }
-
-    private String formatTime(LocalDateTime time) {
-        return time == null ? "" : time.toString();
-    }
-
-    private ImportRow parseImportLine(String line, Long defaultOrgId) {
-        String[] parts = splitCsvLine(line);
-        if (parts.length < 7) {
-            throw new IllegalArgumentException("Not enough columns");
-        }
-        ImportRow row = new ImportRow();
-        row.username = parts[0].trim();
-        row.password = parts[1].trim();
-        row.realName = parts[2].trim();
-        row.phone = parts[3].trim();
-        row.email = parts[4].trim();
-        row.avatar = parts[5].trim();
-        row.orgId = parseLongOrDefault(parts[6], defaultOrgId);
-        if (row.orgId == null) {
-            throw new IllegalArgumentException("org_id is required");
-        }
-        row.status = parts.length > 7 && org.springframework.util.StringUtils.hasText(parts[7])
-            ? Integer.parseInt(parts[7].trim()) : 1;
-        row.roleIds = parts.length > 8 ? parseRoleIds(parts[8]) : Collections.emptyList();
-        if (!org.springframework.util.StringUtils.hasText(row.username)) {
-            throw new IllegalArgumentException("username is required");
-        }
-        if (!org.springframework.util.StringUtils.hasText(row.password)) {
-            throw new IllegalArgumentException("password is required");
-        }
-        if (!org.springframework.util.StringUtils.hasText(row.realName)) {
-            throw new IllegalArgumentException("real_name is required");
-        }
-        return row;
-    }
-
-    private String[] splitCsvLine(String line) {
-        List<String> parts = new ArrayList<>();
-        StringBuilder current = new StringBuilder();
-        boolean inQuotes = false;
-        for (int i = 0; i < line.length(); i++) {
-            char ch = line.charAt(i);
-            if (ch == '"') {
-                if (inQuotes && i + 1 < line.length() && line.charAt(i + 1) == '"') {
-                    current.append('"');
-                    i++;
-                } else {
-                    inQuotes = !inQuotes;
-                }
-            } else if (ch == ',' && !inQuotes) {
-                parts.add(current.toString());
-                current.setLength(0);
-            } else {
-                current.append(ch);
-            }
-        }
-        parts.add(current.toString());
-        return parts.toArray(new String[0]);
-    }
-
-    private Long parseLongOrDefault(String value, Long defaultValue) {
-        if (!org.springframework.util.StringUtils.hasText(value)) {
-            return defaultValue;
-        }
-        return Long.parseLong(value.trim());
-    }
-
-    private List<Long> parseRoleIds(String value) {
-        if (!org.springframework.util.StringUtils.hasText(value)) {
-            return Collections.emptyList();
-        }
-        String[] parts = value.split("[,|;]");
-        List<Long> ids = new ArrayList<>();
-        for (String part : parts) {
-            if (org.springframework.util.StringUtils.hasText(part)) {
-                ids.add(Long.parseLong(part.trim()));
-            }
-        }
-        return ids;
-    }
-
-    private static class ImportRow {
-        private String username;
-        private String password;
-        private String realName;
-        private String phone;
-        private String email;
-        private String avatar;
-        private Long orgId;
-        private Integer status;
-        private List<Long> roleIds;
+        return v;
     }
 }
