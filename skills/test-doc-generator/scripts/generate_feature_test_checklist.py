@@ -4,7 +4,7 @@ import pathlib
 import re
 import subprocess
 from dataclasses import dataclass
-from typing import List, Set, Tuple
+from typing import Dict, List, Set, Tuple
 
 
 @dataclass(frozen=True)
@@ -15,8 +15,24 @@ class TestPoint:
     expected: str
     test_type: str
     status: str
+    test_time: str
+    tester: str
     owner: str
     note: str
+
+
+TARGET_HEADERS = [
+    "功能模块",
+    "测试点描述",
+    "前置条件",
+    "预期结果",
+    "测试类型",
+    "测试状态",
+    "测试时间",
+    "测试人",
+    "负责人",
+    "备注",
+]
 
 
 def run(cmd: List[str], cwd: pathlib.Path) -> str:
@@ -24,22 +40,51 @@ def run(cmd: List[str], cwd: pathlib.Path) -> str:
     return p.stdout if p.returncode == 0 else ""
 
 
+def split_row(line: str) -> List[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
 def parse_existing_rows(output_path: pathlib.Path) -> Tuple[List[TestPoint], Set[Tuple[str, str]]]:
     if not output_path.exists():
         return [], set()
 
     lines = output_path.read_text(encoding="utf-8").splitlines()
+    raw_headers: List[str] = []
+    for i in range(len(lines) - 1):
+        if lines[i].startswith("|") and "测试状态" in lines[i] and lines[i + 1].startswith("|"):
+            raw_headers = split_row(lines[i])
+            break
+
+    if not raw_headers:
+        return [], set()
+
     rows: List[TestPoint] = []
     keys: Set[Tuple[str, str]] = set()
     for line in lines:
-        if not line.startswith("|"):
+        if not line.startswith("|") or "测试点描述" in line or line.startswith("|---"):
             continue
-        cols = [c.strip() for c in line.strip().strip("|").split("|")]
-        if len(cols) != 8:
+        cols = split_row(line)
+        if len(cols) < 2:
             continue
-        if cols[0] in {"功能模块", "---"}:
+        row_map: Dict[str, str] = {}
+        for idx, h in enumerate(raw_headers):
+            row_map[h] = cols[idx] if idx < len(cols) else ""
+        for h in TARGET_HEADERS:
+            row_map.setdefault(h, "")
+        tp = TestPoint(
+            module=row_map["功能模块"],
+            desc=row_map["测试点描述"],
+            precondition=row_map["前置条件"],
+            expected=row_map["预期结果"],
+            test_type=row_map["测试类型"],
+            status=row_map["测试状态"] or "🔴 待测试",
+            test_time=row_map["测试时间"],
+            tester=row_map["测试人"],
+            owner=row_map["负责人"],
+            note=row_map["备注"],
+        )
+        if not tp.module or not tp.desc:
             continue
-        tp = TestPoint(*cols)
         rows.append(tp)
         keys.add((tp.module, tp.desc))
     return rows, keys
@@ -115,6 +160,8 @@ def extract_backend_points(files: List[pathlib.Path], owner: str, root: pathlib.
                     expected="返回状态码符合约定，响应字段与业务语义正确",
                     test_type="后端自测",
                     status="🔴 待测试",
+                    test_time="",
+                    tester="",
                     owner=owner,
                     note=f"source={f.relative_to(root)}",
                 ))
@@ -128,6 +175,8 @@ def extract_backend_points(files: List[pathlib.Path], owner: str, root: pathlib.
                 expected="返回明确错误信息且数据不被错误写入",
                 test_type="后端自测",
                 status="🔴 待测试",
+                test_time="",
+                tester="",
                 owner=owner,
                 note=f"source={f.relative_to(root)}",
             ))
@@ -156,6 +205,8 @@ def extract_frontend_points(files: List[pathlib.Path], owner: str, root: pathlib
                 expected="请求参数正确，请求成功/失败都能正确反馈到页面",
                 test_type="前端自测",
                 status="🔴 待测试",
+                test_time="",
+                tester="",
                 owner=owner,
                 note=f"source={f.relative_to(root)}",
             ))
@@ -172,6 +223,8 @@ def extract_frontend_points(files: List[pathlib.Path], owner: str, root: pathlib
                 expected="请求参数正确，请求成功/失败都能正确反馈到页面",
                 test_type="前端自测",
                 status="🔴 待测试",
+                test_time="",
+                tester="",
                 owner=owner,
                 note=f"source={f.relative_to(root)}",
             ))
@@ -202,6 +255,8 @@ def build_integration_points(points: List[TestPoint], owner: str) -> List[TestPo
             expected="前端请求与后端响应契约一致，页面结果正确",
             test_type="联调",
             status="🔴 待测试",
+            test_time="",
+            tester="",
             owner=owner,
             note="auto-overlap",
         ))
@@ -224,12 +279,21 @@ def to_markdown(rows: List[TestPoint]) -> str:
     lines = [
         "# 功能测试清单",
         "",
-        "| 功能模块 | 测试点描述 | 前置条件 | 预期结果 | 测试类型 | 测试状态 | 负责人 | 备注 |",
-        "|---|---|---|---|---|---|---|---|",
+        "| 功能模块 | 测试点描述 | 前置条件 | 预期结果 | 测试类型 | 测试状态 | 测试时间 | 测试人 | 负责人 | 备注 |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         lines.append("| " + " | ".join([
-            r.module, r.desc, r.precondition, r.expected, r.test_type, r.status, r.owner, r.note
+            r.module,
+            r.desc,
+            r.precondition,
+            r.expected,
+            r.test_type,
+            r.status,
+            r.test_time,
+            r.tester,
+            r.owner,
+            r.note,
         ]) + " |")
     lines.append("")
     return "\n".join(lines)

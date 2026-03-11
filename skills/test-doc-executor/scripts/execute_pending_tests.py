@@ -100,8 +100,35 @@ def http_request(base_url: str, method: str, path: str, body: Optional[dict] = N
         return 0, str(e)
 
 
+def http_request_with_headers(
+    base_url: str,
+    method: str,
+    path: str,
+    body: Optional[dict] = None,
+    headers: Optional[Dict[str, str]] = None,
+) -> Tuple[int, str]:
+    url = base_url.rstrip("/") + path
+    data = None
+    req_headers = {"Content-Type": "application/json"}
+    if headers:
+        req_headers.update(headers)
+    if body is not None:
+        data = json.dumps(body).encode("utf-8")
+
+    req = urllib.request.Request(url=url, method=method.upper(), data=data, headers=req_headers)
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            raw = resp.read().decode("utf-8", errors="ignore")
+            return resp.getcode(), raw
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode("utf-8", errors="ignore") if e.fp else str(e)
+        return e.code, raw
+    except Exception as e:
+        return 0, str(e)
+
+
 def backend_alive(base_url: str) -> bool:
-    code, _ = http_request(base_url, "GET", "/api/users")
+    code, _ = http_request(base_url, "GET", "/api/auth/captcha")
     return code == 200
 
 
@@ -175,12 +202,50 @@ def random_user_payload(tag: str) -> dict:
     }
 
 
+def random_org_payload(tag: str) -> dict:
+    suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    return {
+        "parentId": 1,
+        "name": f"AutoOrg_{tag}_{suffix}",
+        "code": f"AUTO_ORG_{suffix}",
+        "leader": "Auto",
+        "description": "auto-generated",
+        "sortNo": 999,
+        "status": 1,
+    }
+
+
+def random_role_payload(tag: str) -> dict:
+    suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    return {
+        "name": f"AutoRole_{tag}_{suffix}",
+        "code": f"AUTO_ROLE_{suffix}",
+        "description": "auto-generated",
+        "status": 1,
+    }
+
+
+def random_menu_payload(tag: str) -> dict:
+    suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
+    return {
+        "parentId": 0,
+        "name": f"AutoMenu_{tag}_{suffix}",
+        "path": f"/auto-{suffix}",
+        "icon": "auto",
+        "permCode": f"auto:test:{suffix}",
+        "type": "MENU",
+        "sortNo": 999,
+        "status": 1,
+    }
+
+
 def find_frontend_impl_files(workspace: pathlib.Path, path: str) -> List[str]:
     src_root = workspace / "user-management-font" / "src"
     found: List[str] = []
     if not src_root.exists():
         return found
-    needle = path.replace("/{id}", "")
+    needle = re.sub(r"/\{[^}]+\}", "", path)
+    needle = needle.split("?")[0]
     for p in src_root.rglob("*"):
         if p.is_file() and p.suffix in {".js", ".ts", ".vue", ".jsx", ".tsx"}:
             text = p.read_text(encoding="utf-8", errors="ignore")
@@ -194,7 +259,8 @@ def resolve_id_for_path(ctx: Dict[str, str], base_url: str) -> Optional[str]:
     if rid:
         return rid
 
-    code, body = http_request(base_url, "GET", "/api/users")
+    auth = ctx.get("auth_headers", {})
+    code, body = http_request_with_headers(base_url, "GET", "/api/users?orgId=1", headers=auth)
     if code == 200:
         try:
             data = json.loads(body)
@@ -206,7 +272,7 @@ def resolve_id_for_path(ctx: Dict[str, str], base_url: str) -> Optional[str]:
         return rid
 
     payload = random_user_payload("idseed")
-    c, b = http_request(base_url, "POST", "/api/users", payload)
+    c, b = http_request_with_headers(base_url, "POST", "/api/users", payload, headers=auth)
     if c == 201:
         try:
             rid = str(json.loads(b).get("id"))
@@ -215,20 +281,175 @@ def resolve_id_for_path(ctx: Dict[str, str], base_url: str) -> Optional[str]:
     return rid
 
 
-def api_smoke(base_url: str, method: str, path: str, ctx: Dict[str, str]) -> Tuple[bool, str]:
-    if "{id}" in path:
-        rid = resolve_id_for_path(ctx, base_url)
+def resolve_org_id(ctx: Dict[str, str], base_url: str) -> Optional[str]:
+    if ctx.get("org_id"):
+        return ctx["org_id"]
+    auth = ctx.get("auth_headers", {})
+    code, body = http_request_with_headers(base_url, "GET", "/api/orgs/tree", headers=auth)
+    if code != 200:
+        return None
+    try:
+        data = json.loads(body)
+        if isinstance(data, list) and data:
+            oid = str(data[0].get("id"))
+            ctx["org_id"] = oid
+            return oid
+    except Exception:
+        pass
+    return None
+
+
+def resolve_role_id(ctx: Dict[str, str], base_url: str) -> Optional[str]:
+    if ctx.get("role_id"):
+        return ctx["role_id"]
+    auth = ctx.get("auth_headers", {})
+    code, body = http_request_with_headers(base_url, "GET", "/api/roles", headers=auth)
+    if code != 200:
+        return None
+    try:
+        data = json.loads(body)
+        if isinstance(data, list) and data:
+            rid = str(data[0].get("id"))
+            ctx["role_id"] = rid
+            return rid
+    except Exception:
+        pass
+    return None
+
+
+def resolve_menu_id(ctx: Dict[str, str], base_url: str) -> Optional[str]:
+    if ctx.get("menu_id"):
+        return ctx["menu_id"]
+    auth = ctx.get("auth_headers", {})
+    code, body = http_request_with_headers(base_url, "GET", "/api/menus/tree", headers=auth)
+    if code != 200:
+        return None
+    try:
+        data = json.loads(body)
+        if isinstance(data, list) and data:
+            mid = str(data[0].get("id"))
+            ctx["menu_id"] = mid
+            return mid
+    except Exception:
+        pass
+    return None
+
+
+def ensure_login(ctx: Dict[str, str], base_url: str, username: str, password: str) -> bool:
+    if ctx.get("auth_token"):
+        return True
+    code, body = http_request(base_url, "GET", "/api/auth/captcha")
+    if code != 200:
+        return False
+    try:
+        cap = json.loads(body)
+    except Exception:
+        return False
+    payload = {
+        "username": username,
+        "password": password,
+        "captchaId": cap.get("captchaId"),
+        "captcha": cap.get("code"),
+    }
+    lcode, lbody = http_request(base_url, "POST", "/api/auth/login", payload)
+    if lcode != 200:
+        return False
+    try:
+        token = json.loads(lbody).get("token")
+    except Exception:
+        token = None
+    if not token:
+        return False
+    ctx["auth_token"] = token
+    ctx["auth_headers"] = {"Authorization": f"Bearer {token}"}
+    return True
+
+
+def ensure_second_verify(ctx: Dict[str, str], base_url: str, password: str) -> Optional[str]:
+    if ctx.get("second_verify"):
+        return ctx["second_verify"]
+    auth = ctx.get("auth_headers", {})
+    code, body = http_request_with_headers(
+        base_url,
+        "POST",
+        "/api/auth/second-verify",
+        {"password": password},
+        headers=auth,
+    )
+    if code != 200:
+        return None
+    try:
+        token = json.loads(body).get("token")
+    except Exception:
+        token = None
+    if token:
+        ctx["second_verify"] = token
+    return token
+
+
+def api_smoke(base_url: str, method: str, path: str, ctx: Dict[str, str], username: str, password: str) -> Tuple[bool, str]:
+    if not ensure_login(ctx, base_url, username, password):
+        return False, "自动登录失败"
+
+    auth_headers = dict(ctx.get("auth_headers", {}))
+
+    if "{orgId}" in path:
+        oid = resolve_org_id(ctx, base_url)
+        if not oid:
+            return False, "无法准备 {orgId} 测试数据"
+        path = path.replace("{orgId}", oid)
+    if "{userId}" in path or "/api/users/{id}" in path:
+        uid = resolve_id_for_path(ctx, base_url)
+        if not uid:
+            return False, "无法准备用户ID测试数据"
+        path = path.replace("{userId}", uid).replace("{id}", uid)
+    elif "/api/roles/{id}" in path:
+        rid = resolve_role_id(ctx, base_url)
         if not rid:
-            return False, "无法准备 {id} 测试数据"
+            return False, "无法准备角色ID测试数据"
         path = path.replace("{id}", rid)
+    elif "/api/orgs/{id}" in path:
+        oid = resolve_org_id(ctx, base_url)
+        if not oid:
+            return False, "无法准备组织ID测试数据"
+        path = path.replace("{id}", oid)
+    elif "/api/menus/{id}" in path:
+        mid = resolve_menu_id(ctx, base_url)
+        if not mid:
+            return False, "无法准备菜单ID测试数据"
+        path = path.replace("{id}", mid)
+
+    if "{param}" in path:
+        path = path.replace("/{param}", "")
 
     body = None
     if method in {"POST", "PUT"}:
-        body = random_user_payload("rw")
+        if path.startswith("/api/users/import"):
+            return True, "multipart 导入接口自动脚本跳过（需手工）"
+        if path.endswith("/reset-password"):
+            body = {"newPassword": "Pass@123456"}
+        elif path.endswith("/roles") and path.startswith("/api/users/"):
+            role_id = resolve_role_id(ctx, base_url)
+            body = {"ids": [int(role_id)]} if role_id else {"ids": [1]}
+        elif path.endswith("/data-scopes"):
+            body = [{"moduleCode": "USER", "scope": "ALL"}]
+        elif path.startswith("/api/orgs"):
+            body = random_org_payload("rw")
+        elif path.startswith("/api/roles"):
+            body = random_role_payload("rw")
+        elif path.startswith("/api/menus"):
+            body = random_menu_payload("rw")
+        else:
+            body = random_user_payload("rw")
 
-    status, resp = http_request(base_url, method, path, body)
+    if method == "DELETE" and path.startswith("/api/orgs/"):
+        sv = ensure_second_verify(ctx, base_url, password)
+        if sv:
+            auth_headers["X-Second-Verify"] = sv
+
+    status, resp = http_request_with_headers(base_url, method, path, body, headers=auth_headers)
     ok = (200 <= status < 300) or status == 204
-    if ok and method == "POST":
+    if ok and method == "POST" and path.startswith("/api/users"):
         try:
             ctx["last_created_id"] = str(json.loads(resp).get("id"))
         except Exception:
@@ -236,7 +457,7 @@ def api_smoke(base_url: str, method: str, path: str, ctx: Dict[str, str]) -> Tup
     return ok, f"status={status}"
 
 
-def backend_self_test(row: Dict[str, str], workspace: pathlib.Path, base_url: str, fail_note: str, ctx: Dict[str, str]) -> Tuple[bool, str]:
+def backend_self_test(row: Dict[str, str], workspace: pathlib.Path, base_url: str, fail_note: str, ctx: Dict[str, str], username: str, password: str) -> Tuple[bool, str]:
     method, path = extract_api(row.get("测试点描述", ""))
     if not method or not path:
         return False, "无法从测试点描述提取后端 API"
@@ -247,14 +468,16 @@ def backend_self_test(row: Dict[str, str], workspace: pathlib.Path, base_url: st
 
     expect_fail = any(k in row.get("测试点描述", "") for k in ["失败", "异常", "重复"])
     if expect_fail:
-        status, resp = http_request(base_url, method, path)
+        if not ensure_login(ctx, base_url, username, password):
+            return False, "自动登录失败"
+        status, resp = http_request_with_headers(base_url, method, path, headers=ctx.get("auth_headers", {}))
         ok = 400 <= status < 500
         if ok:
             return True, f"status={status}"
         msg = fail_note or f"后端自测失败: status={status}, resp={resp[:160]}"
         return False, msg
 
-    ok, note = api_smoke(base_url, method, path, ctx)
+    ok, note = api_smoke(base_url, method, path, ctx, username, password)
     if ok:
         return True, note
 
@@ -286,7 +509,7 @@ def frontend_self_test(row: Dict[str, str], workspace: pathlib.Path, fail_note: 
     return False, fail_note or "未识别到前端相关实现文件"
 
 
-def integration_test(row: Dict[str, str], workspace: pathlib.Path, base_url: str, fail_note: str, checkpoint_file: pathlib.Path, ctx: Dict[str, str]) -> Tuple[bool, str]:
+def integration_test(row: Dict[str, str], workspace: pathlib.Path, base_url: str, fail_note: str, checkpoint_file: pathlib.Path, ctx: Dict[str, str], username: str, password: str) -> Tuple[bool, str]:
     method, path = extract_api(row.get("测试点描述", ""))
     if not method or not path:
         return False, "无法从测试点描述提取联调 API"
@@ -306,7 +529,7 @@ def integration_test(row: Dict[str, str], workspace: pathlib.Path, base_url: str
     if not frontend_found:
         return False, fail_note or "未识别到前端相关实现文件"
 
-    ok, note = api_smoke(base_url, method, path, ctx)
+    ok, note = api_smoke(base_url, method, path, ctx, username, password)
     if not ok:
         return False, fail_note or f"联调跑通失败: {note}"
     return True, f"{note}; frontend={', '.join(frontend_found[:2])}"
@@ -333,6 +556,8 @@ def main() -> None:
     ap.add_argument("--doc", required=True)
     ap.add_argument("--tester", required=True)
     ap.add_argument("--base-url", default="http://127.0.0.1:8080")
+    ap.add_argument("--username", default="smile-admin")
+    ap.add_argument("--password", default="123456")
     ap.add_argument("--max-items", type=int, default=0, help="0 means no limit")
     ap.add_argument("--fail-note", default="")
     ap.add_argument("--auto-start-backend", action="store_true")
@@ -380,7 +605,15 @@ def main() -> None:
                 update_row_fail(row, args.tester, args.fail_note or "后端服务不可用")
                 fail_count += 1
             else:
-                ok, note = backend_self_test(row, workspace, args.base_url, args.fail_note, ctx)
+                ok, note = backend_self_test(
+                    row,
+                    workspace,
+                    args.base_url,
+                    args.fail_note,
+                    ctx,
+                    args.username,
+                    args.password,
+                )
                 if ok:
                     update_row_pass(row, args.tester, note)
                     pass_count += 1
@@ -398,7 +631,16 @@ def main() -> None:
                 fail_count += 1
 
         elif ttype == "联调":
-            ok, note = integration_test(row, workspace, args.base_url, args.fail_note, checkpoint_file, ctx)
+            ok, note = integration_test(
+                row,
+                workspace,
+                args.base_url,
+                args.fail_note,
+                checkpoint_file,
+                ctx,
+                args.username,
+                args.password,
+            )
             if ok:
                 update_row_pass(row, args.tester, note)
                 pass_count += 1

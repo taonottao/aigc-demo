@@ -13,7 +13,7 @@ from typing import Iterable
 
 
 READ_ONLY_PREFIXES = ("select", "with", "show", "describe", "desc", "explain")
-DEFAULT_CONFIG_PATH = pathlib.Path(__file__).resolve().parents[2] / "local-config" / "database.json"
+DEFAULT_CONFIG_PATH = pathlib.Path(__file__).resolve().parents[3] / "local-config" / "database.json"
 REQUIRED_CONN_FIELDS = ("engine", "host", "port", "user", "password", "database")
 
 

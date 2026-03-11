@@ -1,4 +1,4 @@
-import { http } from './http'
+import { http, httpBlob } from './http'
 
 export function listUsers(params = {}) {
   const search = new URLSearchParams()
@@ -29,8 +29,22 @@ export function deleteUser(id, secondVerifyToken) {
   })
 }
 
-export function listRoles() {
-  return http('/api/roles/simple')
+export function resetPassword(id, newPassword) {
+  return http(`/api/users/${id}/reset-password`, {
+    method: 'POST',
+    body: JSON.stringify({ newPassword })
+  })
+}
+
+export function listUserRoleIds(id) {
+  return http(`/api/users/${id}/roles`)
+}
+
+export function replaceUserRoleIds(id, ids) {
+  return http(`/api/users/${id}/roles`, {
+    method: 'PUT',
+    body: JSON.stringify({ ids })
+  })
 }
 
 function buildSearch(params = {}) {
@@ -43,37 +57,16 @@ function buildSearch(params = {}) {
   return search.toString() ? `?${search.toString()}` : ''
 }
 
-async function handleRawResponse(response) {
-  if (!response.ok) {
-    let message = `Request failed: ${response.status}`
-    try {
-      const data = await response.json()
-      if (data?.message) {
-        message = data.message
-      }
-    } catch (_) {
-      // ignore parsing error
-    }
-    throw new Error(message)
-  }
-  return response
-}
-
 export async function importUsers(file, params = {}) {
   const form = new FormData()
   form.append('file', file)
-  const response = await fetch(`/api/users/import${buildSearch(params)}`, {
+  return http(`/api/users/import${buildSearch(params)}`, {
     method: 'POST',
-    body: form
+    body: form,
+    headers: {}
   })
-  const raw = await handleRawResponse(response)
-  return raw.json()
 }
 
 export async function exportUsers(params = {}) {
-  const response = await fetch(`/api/users/export${buildSearch(params)}`, {
-    method: 'GET'
-  })
-  const raw = await handleRawResponse(response)
-  return raw.blob()
+  return httpBlob(`/api/users/export${buildSearch(params)}`, { method: 'GET' })
 }

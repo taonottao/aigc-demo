@@ -198,6 +198,29 @@ a { color: inherit; }
   border: 1px solid var(--line);
   border-radius: 10px;
 }
+.field select,
+.field textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink);
+}
 
 .modal {
   position: fixed;
@@ -243,4 +266,5 @@ a { color: inherit; }
   .sidebar { border-right: none; border-bottom: 1px solid var(--line); }
   .login-panel { grid-template-columns: 1fr; }
   .form-grid { grid-template-columns: 1fr; }
+  .check-grid { grid-template-columns: 1fr; }
 }

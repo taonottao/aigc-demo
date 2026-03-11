@@ -23,13 +23,15 @@ Generate/update markdown test checklist only. Do not run regression or service s
 - Frontend UI/API interaction logic
 - Business rules (validation/exception)
 3. Document generation:
-- Create/update markdown checklist with required columns:
+- Create/update markdown checklist with required 10 columns (aligned with existing doc):
   - 功能模块
   - 测试点描述
   - 前置条件
   - 预期结果
   - 测试类型（前端自测/后端自测/联调）
   - 测试状态（默认 `🔴 待测试`）
+  - 测试时间（新项默认空）
+  - 测试人（新项默认空）
   - 负责人
   - 备注
 4. Status initialization:
