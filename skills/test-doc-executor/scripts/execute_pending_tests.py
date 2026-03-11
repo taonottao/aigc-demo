@@ -143,10 +143,12 @@ def start_backend(workspace: pathlib.Path) -> Optional[subprocess.Popen]:
 
 
 def extract_api(desc: str) -> Tuple[Optional[str], Optional[str]]:
-    m = re.search(r"\b(GET|POST|PUT|DELETE|PATCH)\s+([^\s]+)", desc)
+    m = re.search(r"\b((?:GET|POST|PUT|DELETE|PATCH)(?:/(?:GET|POST|PUT|DELETE|PATCH))*)\s+([^\s]+)", desc)
     if not m:
         return None, None
-    return m.group(1), m.group(2)
+    method_expr = m.group(1)
+    method = method_expr.split("/")[0]
+    return method, m.group(2)
 
 
 def generate_backend_unit_skeleton(workspace: pathlib.Path, method: str, path: str) -> str:
@@ -244,12 +246,25 @@ def find_frontend_impl_files(workspace: pathlib.Path, path: str) -> List[str]:
     found: List[str] = []
     if not src_root.exists():
         return found
-    needle = re.sub(r"/\{[^}]+\}", "", path)
-    needle = needle.split("?")[0]
+    needle = re.sub(r"/\{[^}]+\}", "", path).split("?")[0]
+    seq_tokens = [s for s in re.sub(r"/\{[^}]+\}", "/", path).split("/") if s]
     for p in src_root.rglob("*"):
         if p.is_file() and p.suffix in {".js", ".ts", ".vue", ".jsx", ".tsx"}:
             text = p.read_text(encoding="utf-8", errors="ignore")
+            low = text.lower()
             if needle and needle in text:
+                found.append(str(p.relative_to(workspace)))
+                continue
+            pos = 0
+            ok = True
+            for token in seq_tokens:
+                token_low = token.lower()
+                nxt = low.find(token_low, pos)
+                if nxt < 0:
+                    ok = False
+                    break
+                pos = nxt + len(token_low)
+            if ok and seq_tokens:
                 found.append(str(p.relative_to(workspace)))
     return found
 
@@ -265,7 +280,17 @@ def resolve_id_for_path(ctx: Dict[str, str], base_url: str) -> Optional[str]:
         try:
             data = json.loads(body)
             if isinstance(data, list) and data:
-                rid = str(data[0].get("id"))
+                current_user_id = ctx.get("current_user_id")
+                for row in data:
+                    raw_id = row.get("id")
+                    if raw_id is None:
+                        continue
+                    cand = str(raw_id)
+                    if cand and cand != "None" and cand != current_user_id:
+                        rid = cand
+                        break
+                if not rid and data[0].get("id") is not None:
+                    rid = str(data[0].get("id"))
         except Exception:
             rid = None
     if rid:
@@ -291,12 +316,31 @@ def resolve_org_id(ctx: Dict[str, str], base_url: str) -> Optional[str]:
     try:
         data = json.loads(body)
         if isinstance(data, list) and data:
-            oid = str(data[0].get("id"))
-            ctx["org_id"] = oid
-            return oid
+            raw_id = data[0].get("id")
+            if raw_id is not None:
+                oid = str(raw_id)
+                ctx["org_id"] = oid
+                return oid
     except Exception:
         pass
     return None
+
+
+def ensure_temp_org_id(ctx: Dict[str, str], base_url: str) -> Optional[str]:
+    if ctx.get("temp_org_id"):
+        return ctx["temp_org_id"]
+    auth = ctx.get("auth_headers", {})
+    payload = random_org_payload("temp")
+    code, body = http_request_with_headers(base_url, "POST", "/api/orgs", payload, headers=auth)
+    if code not in (200, 201):
+        return None
+    try:
+        oid = str(json.loads(body).get("id"))
+    except Exception:
+        oid = None
+    if oid:
+        ctx["temp_org_id"] = oid
+    return oid
 
 
 def resolve_role_id(ctx: Dict[str, str], base_url: str) -> Optional[str]:
@@ -309,9 +353,11 @@ def resolve_role_id(ctx: Dict[str, str], base_url: str) -> Optional[str]:
     try:
         data = json.loads(body)
         if isinstance(data, list) and data:
-            rid = str(data[0].get("id"))
-            ctx["role_id"] = rid
-            return rid
+            raw_id = data[0].get("id")
+            if raw_id is not None:
+                rid = str(raw_id)
+                ctx["role_id"] = rid
+                return rid
     except Exception:
         pass
     return None
@@ -327,9 +373,11 @@ def resolve_menu_id(ctx: Dict[str, str], base_url: str) -> Optional[str]:
     try:
         data = json.loads(body)
         if isinstance(data, list) and data:
-            mid = str(data[0].get("id"))
-            ctx["menu_id"] = mid
-            return mid
+            raw_id = data[0].get("id")
+            if raw_id is not None:
+                mid = str(raw_id)
+                ctx["menu_id"] = mid
+                return mid
     except Exception:
         pass
     return None
@@ -362,6 +410,15 @@ def ensure_login(ctx: Dict[str, str], base_url: str, username: str, password: st
         return False
     ctx["auth_token"] = token
     ctx["auth_headers"] = {"Authorization": f"Bearer {token}"}
+    mcode, mbody = http_request_with_headers(base_url, "GET", "/api/auth/me", headers=ctx["auth_headers"])
+    if mcode == 200:
+        try:
+            me = json.loads(mbody)
+            user = me.get("user") if isinstance(me, dict) else None
+            if isinstance(user, dict) and user.get("id") is not None:
+                ctx["current_user_id"] = str(user.get("id"))
+        except Exception:
+            pass
     return True
 
 
@@ -394,7 +451,10 @@ def api_smoke(base_url: str, method: str, path: str, ctx: Dict[str, str], userna
     auth_headers = dict(ctx.get("auth_headers", {}))
 
     if "{orgId}" in path:
-        oid = resolve_org_id(ctx, base_url)
+        if "/orgs/{orgId}/users/" in path:
+            oid = ensure_temp_org_id(ctx, base_url)
+        else:
+            oid = resolve_org_id(ctx, base_url)
         if not oid:
             return False, "无法准备 {orgId} 测试数据"
         path = path.replace("{orgId}", oid)
@@ -409,7 +469,7 @@ def api_smoke(base_url: str, method: str, path: str, ctx: Dict[str, str], userna
             return False, "无法准备角色ID测试数据"
         path = path.replace("{id}", rid)
     elif "/api/orgs/{id}" in path:
-        oid = resolve_org_id(ctx, base_url)
+        oid = ensure_temp_org_id(ctx, base_url) if method == "DELETE" else resolve_org_id(ctx, base_url)
         if not oid:
             return False, "无法准备组织ID测试数据"
         path = path.replace("{id}", oid)
@@ -454,7 +514,15 @@ def api_smoke(base_url: str, method: str, path: str, ctx: Dict[str, str], userna
             ctx["last_created_id"] = str(json.loads(resp).get("id"))
         except Exception:
             pass
-    return ok, f"status={status}"
+    if ok and method == "POST" and path.startswith("/api/orgs"):
+        try:
+            ctx["temp_org_id"] = str(json.loads(resp).get("id"))
+        except Exception:
+            pass
+    if ok:
+        return ok, f"status={status}"
+    brief = resp[:120].replace("\n", " ")
+    return ok, f"status={status}; resp={brief}"
 
 
 def backend_self_test(row: Dict[str, str], workspace: pathlib.Path, base_url: str, fail_note: str, ctx: Dict[str, str], username: str, password: str) -> Tuple[bool, str]:
@@ -571,7 +639,7 @@ def main() -> None:
         sys.exit(1)
 
     lines, header_idx, data_end_idx, rows = parse_table(doc)
-    pending = [r for r in rows if r.get("测试状态", "").strip() == "🔴 待测试"]
+    pending = [r for r in rows if r.get("测试状态", "").strip() != "🟢 已通过"]
 
     pass_count = 0
     fail_count = 0
@@ -593,7 +661,7 @@ def main() -> None:
     checkpoint_file = workspace / "doc" / "联调检查点.md"
 
     for row in rows:
-        if row.get("测试状态", "").strip() != "🔴 待测试":
+        if row.get("测试状态", "").strip() == "🟢 已通过":
             continue
         if args.max_items and processed >= args.max_items:
             break

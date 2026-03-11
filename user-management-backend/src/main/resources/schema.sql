@@ -211,3 +211,12 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO sys_user_role (user_id, role_id)
 VALUES (1, 1)
 ON CONFLICT (user_id, role_id) DO NOTHING;
+
+-- 对齐自增序列，避免初始化脚本显式插入 ID 后出现主键冲突
+SELECT setval(pg_get_serial_sequence('sys_org', 'id'), COALESCE((SELECT MAX(id) FROM sys_org), 1), true);
+SELECT setval(pg_get_serial_sequence('sys_user', 'id'), COALESCE((SELECT MAX(id) FROM sys_user), 1), true);
+SELECT setval(pg_get_serial_sequence('sys_role', 'id'), COALESCE((SELECT MAX(id) FROM sys_role), 1), true);
+SELECT setval(pg_get_serial_sequence('sys_menu', 'id'), COALESCE((SELECT MAX(id) FROM sys_menu), 1), true);
+SELECT setval(pg_get_serial_sequence('sys_role_data_scope', 'id'), COALESCE((SELECT MAX(id) FROM sys_role_data_scope), 1), true);
+SELECT setval(pg_get_serial_sequence('sys_login_log', 'id'), COALESCE((SELECT MAX(id) FROM sys_login_log), 1), true);
+SELECT setval(pg_get_serial_sequence('sys_op_log', 'id'), COALESCE((SELECT MAX(id) FROM sys_op_log), 1), true);
