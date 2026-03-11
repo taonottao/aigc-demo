@@ -3,12 +3,17 @@ package com.smile.usermanagement.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.smile.usermanagement.entity.User;
 import java.util.List;
+import java.util.Map;
 
 public interface UserService extends IService<User> {
 
     List<User> listByOrgAndKeyword(Long orgId, String keyword);
 
-    User createUser(User user);
+    User createUser(User user, List<Long> roleIds);
 
-    User updateUser(Long id, User user);
+    User updateUser(Long id, User user, List<Long> roleIds);
+
+    List<Long> getRoleIds(Long userId);
+
+    Map<Long, List<Long>> getRoleIdsMap(List<Long> userIds);
 }

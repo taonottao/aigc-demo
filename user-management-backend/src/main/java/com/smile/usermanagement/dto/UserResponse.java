@@ -1,42 +1,29 @@
 package com.smile.usermanagement.dto;
 
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Size;
+import java.time.LocalDateTime;
 import java.util.List;
 
-public class UserCreateRequest {
+public class UserResponse {
 
-    @NotBlank
-    @Size(max = 64)
+    private Long id;
     private String username;
-
-    @NotBlank
-    @Size(max = 255)
-    private String password;
-
-    @NotBlank
-    @Size(max = 64)
     private String realName;
-
-    @Size(max = 32)
     private String phone;
-
-    @Email
-    @Size(max = 128)
     private String email;
-
-    @Size(max = 255)
     private String avatar;
-
-    @NotNull
     private Long orgId;
-
-    @NotNull
     private Integer status;
-
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
     private List<Long> roleIds;
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
 
     public String getUsername() {
         return username;
@@ -44,14 +31,6 @@ public class UserCreateRequest {
 
     public void setUsername(String username) {
         this.username = username;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public void setPassword(String password) {
-        this.password = password;
     }
 
     public String getRealName() {
@@ -100,6 +79,22 @@ public class UserCreateRequest {
 
     public void setStatus(Integer status) {
         this.status = status;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public LocalDateTime getUpdatedAt() {
+        return updatedAt;
+    }
+
+    public void setUpdatedAt(LocalDateTime updatedAt) {
+        this.updatedAt = updatedAt;
     }
 
     public List<Long> getRoleIds() {

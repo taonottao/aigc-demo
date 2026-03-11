@@ -25,3 +25,52 @@ export function updateUser(id, payload) {
 export function deleteUser(id) {
   return http(`/api/users/${id}`, { method: 'DELETE' })
 }
+
+export function listRoles() {
+  return http('/api/roles/simple')
+}
+
+function buildSearch(params = {}) {
+  const search = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      search.set(key, String(value))
+    }
+  })
+  return search.toString() ? `?${search.toString()}` : ''
+}
+
+async function handleRawResponse(response) {
+  if (!response.ok) {
+    let message = `Request failed: ${response.status}`
+    try {
+      const data = await response.json()
+      if (data?.message) {
+        message = data.message
+      }
+    } catch (_) {
+      // ignore parsing error
+    }
+    throw new Error(message)
+  }
+  return response
+}
+
+export async function importUsers(file, params = {}) {
+  const form = new FormData()
+  form.append('file', file)
+  const response = await fetch(`/api/users/import${buildSearch(params)}`, {
+    method: 'POST',
+    body: form
+  })
+  const raw = await handleRawResponse(response)
+  return raw.json()
+}
+
+export async function exportUsers(params = {}) {
+  const response = await fetch(`/api/users/export${buildSearch(params)}`, {
+    method: 'GET'
+  })
+  const raw = await handleRawResponse(response)
+  return raw.blob()
+}
