@@ -38,36 +38,22 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import OrgTree from '../components/OrgTree.vue'
+import { getOrgTree } from '../api/orgs'
 
-const orgTree = [
-  {
-    id: 1,
-    name: '集团总部',
-    code: 'HQ',
-    leader: '系统管理员',
-    status: 1,
-    children: [
-      {
-        id: 2,
-        name: '研发中心',
-        code: 'RD-001',
-        leader: '王工',
-        status: 1,
-        children: [
-          { id: 3, name: '平台组', code: 'RD-PLAT', leader: '陈工', status: 1, children: [] },
-          { id: 4, name: '应用组', code: 'RD-APP', leader: '李工', status: 1, children: [] }
-        ]
-      },
-      { id: 5, name: '华东运营', code: 'OPS-EAST', leader: '周工', status: 1, children: [] }
-    ]
-  }
-]
-
-const selected = ref(orgTree[0].children[0])
+const orgTree = ref([])
+const selected = ref({ id: 1, name: '集团总部', code: 'HQ', children: [] })
 
 function selectNode(node) {
   selected.value = node
 }
+
+onMounted(async () => {
+  const tree = await getOrgTree()
+  orgTree.value = tree || []
+  if (orgTree.value.length) {
+    selected.value = orgTree.value[0]
+  }
+})
 </script>

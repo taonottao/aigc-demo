@@ -22,6 +22,9 @@ export function updateUser(id, payload) {
   })
 }
 
-export function deleteUser(id) {
-  return http(`/api/users/${id}`, { method: 'DELETE' })
+export function deleteUser(id, secondVerifyToken) {
+  return http(`/api/users/${id}`, {
+    method: 'DELETE',
+    headers: secondVerifyToken ? { 'X-Second-Verify': secondVerifyToken } : {}
+  })
 }

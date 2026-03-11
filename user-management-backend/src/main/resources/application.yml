@@ -9,6 +9,16 @@ spring:
     url: jdbc:postgresql://localhost:5432/user-management
     username: smile
     password: 123456
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      continue-on-error: true
+
+jwt:
+  secret: "dev-secret-change-me"
+  issuer: "user-management-backend"
+  expire-minutes: 720
 
 mybatis:
   mapper-locations: classpath*:/mapper/**/*.xml

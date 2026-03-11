@@ -28,8 +28,14 @@
       <table class="table">
         <thead><tr><th>时间</th><th>用户名</th><th>IP</th><th>结果</th><th>设备</th></tr></thead>
         <tbody>
-          <tr><td>2026-03-09 13:35</td><td>smile</td><td>127.0.0.1</td><td><span class="badge ok">成功</span></td><td>macOS Chrome</td></tr>
-          <tr><td>2026-03-09 13:33</td><td>ops_li</td><td>10.12.2.7</td><td><span class="badge danger">失败</span></td><td>Windows Edge</td></tr>
+          <tr v-for="row in loginLogs" :key="row.id">
+            <td>{{ row.createdAt }}</td>
+            <td>{{ row.username }}</td>
+            <td>{{ row.ip || '-' }}</td>
+            <td><span :class="['badge', row.success ? 'ok' : 'danger']">{{ row.success ? '成功' : '失败' }}</span></td>
+            <td>{{ row.userAgent || '-' }}</td>
+          </tr>
+          <tr v-if="!loginLogs.length"><td colspan="5">暂无数据</td></tr>
         </tbody>
       </table>
     </article>
@@ -39,11 +45,33 @@
       <table class="table">
         <thead><tr><th>操作时间</th><th>操作人</th><th>模块</th><th>动作</th><th>详情</th></tr></thead>
         <tbody>
-          <tr><td>2026-03-09 14:06</td><td>smile</td><td>用户管理</td><td>重置密码</td><td>重置用户密码并要求首次登录修改</td></tr>
-          <tr><td>2026-03-09 14:02</td><td>smile</td><td>角色权限</td><td>更新权限</td><td>新增 user:export 权限</td></tr>
-          <tr><td>2026-03-09 13:58</td><td>auditor</td><td>组织管理</td><td>删除组织</td><td>触发二次验证后删除测试部门</td></tr>
+          <tr v-for="row in opLogs" :key="row.id">
+            <td>{{ row.createdAt }}</td>
+            <td>{{ row.username }}</td>
+            <td>{{ row.module }}</td>
+            <td>{{ row.action }}</td>
+            <td>{{ row.detail || '-' }}</td>
+          </tr>
+          <tr v-if="!opLogs.length"><td colspan="5">暂无数据</td></tr>
         </tbody>
       </table>
     </article>
   </section>
 </template>
+
+<script setup>
+import { onMounted, ref } from 'vue'
+import { getLoginLogs, getOperationLogs } from '../api/logs'
+
+const loginLogs = ref([])
+const opLogs = ref([])
+
+onMounted(async () => {
+  try {
+    loginLogs.value = (await getLoginLogs()) || []
+    opLogs.value = (await getOperationLogs()) || []
+  } catch (e) {
+    // ignore
+  }
+})
+</script>

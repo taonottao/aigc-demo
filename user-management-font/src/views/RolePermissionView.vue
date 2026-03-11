@@ -17,9 +17,12 @@
       <table class="table">
         <thead><tr><th>角色名</th><th>状态</th><th>成员数</th></tr></thead>
         <tbody>
-          <tr><td><strong>超级管理员</strong></td><td><span class="badge ok">启用</span></td><td>3</td></tr>
-          <tr><td>部门主管</td><td><span class="badge ok">启用</span></td><td>29</td></tr>
-          <tr><td>审计员</td><td><span class="badge warn">禁用</span></td><td>2</td></tr>
+          <tr v-for="row in roles" :key="row.id">
+            <td><strong>{{ row.name }}</strong></td>
+            <td><span :class="['badge', row.status === 1 ? 'ok' : 'warn']">{{ row.status === 1 ? '启用' : '禁用' }}</span></td>
+            <td>-</td>
+          </tr>
+          <tr v-if="!roles.length"><td colspan="3">暂无数据</td></tr>
         </tbody>
       </table>
     </article>
@@ -50,3 +53,18 @@
     </article>
   </section>
 </template>
+
+<script setup>
+import { onMounted, ref } from 'vue'
+import { listRoles } from '../api/roles'
+
+const roles = ref([])
+
+onMounted(async () => {
+  try {
+    roles.value = (await listRoles()) || []
+  } catch (e) {
+    // ignore
+  }
+})
+</script>

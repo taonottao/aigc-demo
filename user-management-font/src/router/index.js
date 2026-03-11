@@ -32,8 +32,8 @@ router.beforeEach((to) => {
   if (to.path === '/login') {
     return true
   }
-  const loggedIn = localStorage.getItem('loggedIn') === '1'
-  if (!loggedIn) {
+  const token = localStorage.getItem('token')
+  if (!token) {
     return '/login'
   }
   return true

@@ -7,7 +7,7 @@
     <div class="actions">
       <input v-model="keyword" class="btn" placeholder="关键字搜索用户名/姓名/手机号" />
       <button class="btn" @click="fetchUsers">搜索</button>
-      <button class="btn primary" @click="openCreate">新增用户</button>
+      <button v-if="hasPerm('user:add')" class="btn primary" @click="openCreate">新增用户</button>
     </div>
   </header>
 
@@ -38,8 +38,8 @@
             <td>{{ item.orgId }}</td>
             <td><span :class="['badge', item.status === 1 ? 'ok' : 'warn']">{{ item.status === 1 ? '启用' : '禁用' }}</span></td>
             <td>
-              <button class="btn" @click="openEdit(item)">编辑</button>
-              <button class="btn danger" @click="remove(item.id)">删除</button>
+              <button v-if="hasPerm('user:edit')" class="btn" @click="openEdit(item)">编辑</button>
+              <button v-if="hasPerm('user:delete')" class="btn danger" @click="remove(item.id)">删除</button>
             </td>
           </tr>
           <tr v-if="!loading && !users.length"><td colspan="8">暂无数据</td></tr>
@@ -73,32 +73,18 @@
 import { onMounted, reactive, ref } from 'vue'
 import OrgTree from '../components/OrgTree.vue'
 import { createUser, deleteUser, listUsers, updateUser } from '../api/users'
+import { getOrgTree } from '../api/orgs'
+import { secondVerify } from '../api/auth'
 
-const orgTree = [
-  {
-    id: 1,
-    name: '集团总部',
-    children: [
-      {
-        id: 2,
-        name: '研发中心',
-        children: [
-          { id: 3, name: '平台组', children: [] },
-          { id: 4, name: '应用组', children: [] }
-        ]
-      },
-      { id: 5, name: '华东运营', children: [] }
-    ]
-  }
-]
-
-const selectedOrg = ref(orgTree[0])
+const orgTree = ref([])
+const selectedOrg = ref({ id: 1, name: '组织' })
 const keyword = ref('')
 const users = ref([])
 const loading = ref(false)
 const errorMessage = ref('')
 const showModal = ref(false)
 const editingId = ref(null)
+const permissions = ref([])
 
 const form = reactive({
   username: '',
@@ -136,7 +122,7 @@ function openEdit(item) {
   editingId.value = item.id
   Object.assign(form, {
     username: item.username,
-    password: item.password || '',
+    password: '',
     realName: item.realName,
     phone: item.phone || '',
     email: item.email || '',
@@ -149,6 +135,10 @@ function openEdit(item) {
 
 function closeModal() {
   showModal.value = false
+}
+
+function hasPerm(code) {
+  return permissions.value.includes(code) || permissions.value.includes('ROLE_ADMIN')
 }
 
 async function fetchUsers() {
@@ -187,12 +177,32 @@ async function remove(id) {
   }
   errorMessage.value = ''
   try {
-    await deleteUser(id)
+    const password = window.prompt('敏感操作二次验证：请输入你的登录密码')
+    if (!password) return
+    const { token } = await secondVerify(password)
+    await deleteUser(id, token)
     await fetchUsers()
   } catch (err) {
     errorMessage.value = err.message
   }
 }
 
-onMounted(fetchUsers)
+onMounted(async () => {
+  try {
+    permissions.value = JSON.parse(localStorage.getItem('permissions') || '[]')
+  } catch (_) {
+    permissions.value = []
+  }
+  try {
+    const tree = await getOrgTree()
+    orgTree.value = tree || []
+    if (orgTree.value.length) {
+      selectedOrg.value = orgTree.value[0]
+      form.orgId = selectedOrg.value.id
+    }
+  } catch (err) {
+    errorMessage.value = err.message
+  }
+  await fetchUsers()
+})
 </script>

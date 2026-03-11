@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 
 public class UserUpdateRequest {
 
@@ -11,7 +12,6 @@ public class UserUpdateRequest {
     @Size(max = 64)
     private String username;
 
-    @NotBlank
     @Size(max = 255)
     private String password;
 
@@ -34,6 +34,8 @@ public class UserUpdateRequest {
 
     @NotNull
     private Integer status;
+
+    private List<Long> roleIds;
 
     public String getUsername() {
         return username;
@@ -97,5 +99,13 @@ public class UserUpdateRequest {
 
     public void setStatus(Integer status) {
         this.status = status;
+    }
+
+    public List<Long> getRoleIds() {
+        return roleIds;
+    }
+
+    public void setRoleIds(List<Long> roleIds) {
+        this.roleIds = roleIds;
     }
 }

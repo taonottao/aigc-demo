@@ -18,34 +18,65 @@
         </div>
         <div class="field">
           <label>验证码</label>
-          <input v-model="form.captcha" />
+          <div style="display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center;">
+            <input v-model="form.captcha" />
+            <button class="btn" @click="refreshCaptcha">刷新：{{ captchaCode }}</button>
+          </div>
         </div>
         <div class="actions">
           <button class="btn primary" @click="login">登录并进入系统</button>
         </div>
+        <p v-if="errorMessage" class="small" style="color: var(--danger)">{{ errorMessage }}</p>
       </section>
     </section>
   </main>
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { getCaptcha, login as loginApi } from '../api/auth'
 
 const router = useRouter()
 
 const form = reactive({
   username: 'smile-admin',
   password: '123456',
-  captcha: 'A7P9'
+  captcha: '',
+  captchaId: ''
 })
 
-function login() {
+const captchaCode = ref('')
+const errorMessage = ref('')
+
+async function refreshCaptcha() {
+  const data = await getCaptcha()
+  form.captchaId = data.captchaId
+  captchaCode.value = data.code
+}
+
+async function login() {
   if (!form.username || !form.password || !form.captcha) {
     alert('请输入完整登录信息')
     return
   }
-  localStorage.setItem('loggedIn', '1')
-  router.push('/dashboard')
+  errorMessage.value = ''
+  try {
+    const res = await loginApi({
+      username: form.username,
+      password: form.password,
+      captchaId: form.captchaId,
+      captcha: form.captcha
+    })
+    localStorage.setItem('token', res.token)
+    localStorage.setItem('menus', JSON.stringify(res.menus || []))
+    localStorage.setItem('permissions', JSON.stringify(res.permissions || []))
+    router.push('/dashboard')
+  } catch (err) {
+    errorMessage.value = err.message
+    await refreshCaptcha()
+  }
 }
+
+onMounted(refreshCaptcha)
 </script>
