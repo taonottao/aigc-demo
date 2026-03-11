@@ -1,2 +1,5 @@
 local-config/
 .idea/
+__pycache__/
+*.py[cod]
+user-management-font/node_modules/
