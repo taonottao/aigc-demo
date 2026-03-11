@@ -102,7 +102,7 @@ public class UserController {
         if (principal != null) {
             authService.assertSecondVerified(principal.id(), token);
         }
-        boolean removed = userService.removeById(id);
+        boolean removed = userService.deleteUserById(id);
         if (!removed) {
             throw new IllegalArgumentException("User not found: " + id);
         }

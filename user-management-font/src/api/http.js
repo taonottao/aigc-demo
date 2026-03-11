@@ -1,12 +1,13 @@
 export async function http(url, options = {}) {
   const token = localStorage.getItem('token')
+  const { headers: customHeaders = {}, ...restOptions } = options
   const response = await fetch(url, {
+    ...restOptions,
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {})
-    },
-    ...options
+      ...customHeaders
+    }
   })
 
   if (!response.ok) {

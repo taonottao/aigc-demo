@@ -3,6 +3,7 @@ package com.smile.usermanagement.config;
 import com.smile.usermanagement.security.JwtAuthFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -32,6 +33,13 @@ public class SecurityConfig {
             .csrf(csrf -> csrf.disable())
             .cors(Customizer.withDefaults())
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((request, response, authException) ->
+                    response.sendError(HttpStatus.UNAUTHORIZED.value(), "Unauthorized"))
+                .accessDeniedHandler((request, response, accessDeniedException) ->
+                    response.sendError(HttpStatus.FORBIDDEN.value(), "Forbidden"))
+            )
+            .anonymous(anonymous -> anonymous.disable())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/login", "/api/auth/captcha").permitAll()
                 .requestMatchers("/error").permitAll()

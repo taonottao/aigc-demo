@@ -14,6 +14,7 @@ import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
 @Service
@@ -139,6 +140,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             }
             userRoleMapper.insert(userId, roleId);
         }
+    }
+
+    @Override
+    @Transactional
+    public boolean deleteUserById(Long userId) {
+        User existing = getById(userId);
+        if (existing == null) {
+            return false;
+        }
+        userRoleMapper.deleteByUserId(userId);
+        return removeById(userId);
     }
 
     private void validateUsernameUnique(String username, Long excludeId) {

@@ -17,4 +17,6 @@ public interface UserService extends IService<User> {
     List<Long> listRoleIds(Long userId);
 
     void replaceRoles(Long userId, List<Long> roleIds);
+
+    boolean deleteUserById(Long userId);
 }
