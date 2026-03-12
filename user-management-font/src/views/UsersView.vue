@@ -14,6 +14,21 @@
     </div>
   </header>
 
+  <section class="mini-grid">
+    <article class="mini-card">
+      <p>当前组织</p>
+      <h4>{{ selectedOrg.name || '-' }}</h4>
+    </article>
+    <article class="mini-card">
+      <p>当前页用户</p>
+      <h4>{{ users.length }}</h4>
+    </article>
+    <article class="mini-card">
+      <p>用户总数</p>
+      <h4>{{ pagination.total }}</h4>
+    </article>
+  </section>
+
   <section class="split-shell">
     <article class="tree-panel">
       <h3>组织树</h3>
@@ -24,32 +39,54 @@
     <article class="list-panel">
       <h3>{{ selectedOrg.name }} - 用户列表</h3>
       <p v-if="errorMessage" class="small" style="color: var(--danger)">{{ errorMessage }}</p>
-      <table class="table">
-        <thead>
-          <tr>
-            <th>ID</th><th>用户名</th><th>姓名</th><th>手机号</th><th>邮箱</th><th>组织ID</th><th>状态</th><th>角色</th><th>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="loading"><td colspan="9">加载中...</td></tr>
-          <tr v-for="item in users" :key="item.id">
-            <td>{{ item.id }}</td>
-            <td>{{ item.username }}</td>
-            <td>{{ item.realName }}</td>
-            <td>{{ item.phone || '-' }}</td>
-            <td>{{ item.email || '-' }}</td>
-            <td>{{ item.orgId }}</td>
-            <td><span :class="['badge', item.status === 1 ? 'ok' : 'warn']">{{ item.status === 1 ? '启用' : '禁用' }}</span></td>
-            <td>{{ (userRoleNames[item.id] || []).join(' / ') || '-' }}</td>
-            <td>
-              <button v-if="hasPerm('user:edit')" class="btn" @click="openEdit(item)">编辑</button>
-              <button v-if="hasPerm('user:edit')" class="btn" @click="openResetPassword(item)">重置密码</button>
-              <button v-if="hasPerm('user:delete')" class="btn danger" @click="remove(item.id)">删除</button>
-            </td>
-          </tr>
-          <tr v-if="!loading && !users.length"><td colspan="9">暂无数据</td></tr>
-        </tbody>
-      </table>
+      <div class="table-scroll">
+        <table class="table user-table">
+          <thead>
+            <tr>
+              <th>用户名</th><th>姓名</th><th>手机号</th><th>邮箱</th><th>状态</th><th>角色</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-if="loading"><td colspan="7">加载中...</td></tr>
+            <tr v-for="item in users" :key="item.id">
+              <td><span class="cell-text" :title="item.username">{{ item.username }}</span></td>
+              <td><span class="cell-text" :title="item.realName">{{ item.realName }}</span></td>
+              <td><span class="cell-text" :title="item.phone || '-'">{{ item.phone || '-' }}</span></td>
+              <td><span class="cell-text" :title="item.email || '-'">{{ item.email || '-' }}</span></td>
+              <td><span :class="['badge', item.status === 1 ? 'ok' : 'warn']">{{ item.status === 1 ? '启用' : '禁用' }}</span></td>
+              <td><span class="cell-text" :title="(userRoleNames[item.id] || []).join(' / ') || '-'">{{ (userRoleNames[item.id] || []).join(' / ') || '-' }}</span></td>
+              <td>
+                <div class="row-actions">
+                  <button v-if="hasPerm('user:edit')" class="btn" @click="openEdit(item)">编辑</button>
+                  <button v-if="hasPerm('user:edit')" class="btn" @click="openResetPassword(item)">重置密码</button>
+                  <button v-if="hasPerm('user:delete')" class="btn danger" @click="remove(item.id)">删除</button>
+                </div>
+              </td>
+            </tr>
+            <tr v-if="!loading && !users.length"><td colspan="7">暂无数据</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="actions" style="margin-top: 10px; justify-content: space-between;">
+        <span class="small">共 {{ pagination.total }} 条，第 {{ pagination.page }} / {{ totalPages }} 页</span>
+        <div class="actions">
+          <select v-model.number="pagination.size" @change="onPageSizeChange">
+            <option :value="10">10 / 页</option>
+            <option :value="20">20 / 页</option>
+            <option :value="50">50 / 页</option>
+          </select>
+          <button class="btn" :disabled="pagination.page <= 1" @click="changePage(pagination.page - 1)">上一页</button>
+          <button
+            v-for="page in pageNumbers"
+            :key="`page-${page}`"
+            :class="['btn', pagination.page === page ? 'primary' : '']"
+            @click="changePage(page)"
+          >
+            {{ page }}
+          </button>
+          <button class="btn" :disabled="pagination.page >= totalPages" @click="changePage(pagination.page + 1)">下一页</button>
+        </div>
+      </div>
     </article>
   </section>
 
@@ -72,13 +109,17 @@
         </div>
         <div class="field full">
           <label>角色分配</label>
-          <div class="check-grid">
-            <label v-for="role in roles" :key="role.id" class="check-item">
-              <input type="checkbox" :checked="form.roleIds.includes(role.id)" @change="toggleRole(role.id, $event.target.checked)" />
-              {{ role.name }}（{{ role.code }}）
+          <div class="role-check-grid">
+            <label v-for="role in roles" :key="role.id" class="role-check-item">
+              <input
+                type="checkbox"
+                :checked="form.roleIds.includes(role.id)"
+                @change="toggleRole(role.id, $event.target.checked)"
+              />
+              <span>{{ role.name }}（{{ role.code }}）</span>
             </label>
-            <p v-if="!roles.length" class="small">暂无可选角色</p>
           </div>
+          <p v-if="!roles.length" class="small">暂无可选角色</p>
         </div>
       </div>
       <div class="actions">
@@ -104,7 +145,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import OrgTree from '../components/OrgTree.vue'
 import { secondVerify } from '../api/auth'
 import {
@@ -113,7 +154,7 @@ import {
   exportUsers,
   importUsers,
   listUserRoleIds,
-  listUsers,
+  pageUsers,
   resetPassword,
   updateUser
 } from '../api/users'
@@ -128,6 +169,13 @@ const loading = ref(false)
 const errorMessage = ref('')
 const permissions = ref([])
 const fileInputRef = ref(null)
+const pagination = reactive({
+  page: 1,
+  size: 10,
+  total: 0
+})
+const totalPages = computed(() => Math.max(1, Math.ceil((pagination.total || 0) / pagination.size)))
+const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, i) => i + 1))
 
 const roles = ref([])
 const userRoleNames = ref({})
@@ -157,6 +205,7 @@ function hasPerm(code) {
 function onSelectOrg(node) {
   selectedOrg.value = node
   form.orgId = node.id
+  pagination.page = 1
   fetchUsers()
 }
 
@@ -259,10 +308,15 @@ async function fetchUsers() {
   loading.value = true
   errorMessage.value = ''
   try {
-    users.value = await listUsers({
+    const data = await pageUsers({
       orgId: selectedOrg.value.id,
-      keyword: keyword.value.trim()
+      keyword: keyword.value.trim(),
+      page: pagination.page,
+      size: pagination.size
     })
+    users.value = data?.items || []
+    pagination.total = data?.total || 0
+    pagination.page = data?.page || pagination.page
     await refreshUserRoleNames()
   } catch (err) {
     errorMessage.value = err.message
@@ -304,6 +358,9 @@ async function submit() {
       await createUser(payload)
     }
     showEditModal.value = false
+    if (users.value.length === 1 && pagination.page > 1 && editingId.value) {
+      pagination.page -= 1
+    }
     await fetchUsers()
   } catch (err) {
     errorMessage.value = err.message
@@ -320,6 +377,9 @@ async function remove(id) {
     if (!password) return
     const { token } = await secondVerify(password)
     await deleteUser(id, token)
+    if (users.value.length === 1 && pagination.page > 1) {
+      pagination.page -= 1
+    }
     await fetchUsers()
   } catch (err) {
     errorMessage.value = err.message
@@ -339,12 +399,26 @@ async function handleImport(event) {
   try {
     const res = await importUsers(file)
     window.alert(`导入完成，新增 ${res.created || 0} 条`) 
+    pagination.page = 1
     await fetchUsers()
   } catch (err) {
     errorMessage.value = err.message
   } finally {
     event.target.value = ''
   }
+}
+
+function changePage(page) {
+  if (page < 1 || page > totalPages.value) {
+    return
+  }
+  pagination.page = page
+  fetchUsers()
+}
+
+function onPageSizeChange() {
+  pagination.page = 1
+  fetchUsers()
 }
 
 async function handleExport() {
@@ -391,3 +465,105 @@ onMounted(async () => {
   await fetchUsers()
 })
 </script>
+
+<style scoped>
+.split-shell {
+  grid-template-columns: minmax(240px, 280px) 1fr;
+}
+
+.list-panel {
+  min-width: 0;
+}
+
+.table-scroll {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.table-scroll .table {
+  min-width: 980px;
+}
+
+.user-table {
+  table-layout: fixed;
+}
+
+.user-table th:nth-child(1),
+.user-table td:nth-child(1) {
+  width: 130px;
+}
+
+.user-table th:nth-child(2),
+.user-table td:nth-child(2) {
+  width: 130px;
+}
+
+.user-table th:nth-child(3),
+.user-table td:nth-child(3) {
+  width: 150px;
+}
+
+.user-table th:nth-child(4),
+.user-table td:nth-child(4) {
+  width: 200px;
+}
+
+.user-table th:nth-child(5),
+.user-table td:nth-child(5) {
+  width: 90px;
+}
+
+.user-table th:nth-child(6),
+.user-table td:nth-child(6) {
+  width: 220px;
+}
+
+.user-table th:nth-child(7),
+.user-table td:nth-child(7) {
+  width: 210px;
+}
+
+.cell-text {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.role-check-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid #dfd8cf;
+  border-radius: 10px;
+  padding: 10px;
+  background: #fff;
+}
+
+.role-check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #2c2824;
+}
+
+@media (max-width: 1040px) {
+  .split-shell {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

@@ -1,14 +1,23 @@
 <template>
   <div class="layout">
     <aside class="sidebar">
-      <div class="brand"><span class="brand-dot" /> Admin Matrix</div>
+      <div class="brand-block">
+        <div class="brand"><span class="brand-dot" /> Admin Matrix</div>
+        <p class="brand-subtitle">统一组织、用户、权限与审计能力的管理中台</p>
+      </div>
       <nav class="nav">
-        <RouterLink v-for="m in menus" :key="m.id" :to="m.path">{{ m.name }}</RouterLink>
-        <a href="#" @click.prevent="logout">退出登录</a>
+        <RouterLink v-for="m in menus" :key="m.id" :to="m.path" class="nav-link">{{ m.name }}</RouterLink>
+        <a href="#" class="nav-link nav-logout" @click.prevent="logout">退出登录</a>
       </nav>
+      <div class="sidebar-foot">
+        <p>Workspace</p>
+        <h4>Production Ready</h4>
+      </div>
     </aside>
     <main class="main">
-      <RouterView />
+      <section class="page-chrome">
+        <RouterView />
+      </section>
     </main>
   </div>
 </template>

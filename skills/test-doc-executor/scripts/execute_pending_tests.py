@@ -469,7 +469,8 @@ def api_smoke(base_url: str, method: str, path: str, ctx: Dict[str, str], userna
             return False, "无法准备角色ID测试数据"
         path = path.replace("{id}", rid)
     elif "/api/orgs/{id}" in path:
-        oid = ensure_temp_org_id(ctx, base_url) if method == "DELETE" else resolve_org_id(ctx, base_url)
+        # Never mutate the root org during smoke tests.
+        oid = ensure_temp_org_id(ctx, base_url)
         if not oid:
             return False, "无法准备组织ID测试数据"
         path = path.replace("{id}", oid)

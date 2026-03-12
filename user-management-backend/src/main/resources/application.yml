@@ -24,6 +24,7 @@ mybatis:
   mapper-locations: classpath*:/mapper/**/*.xml
   configuration:
     map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
 
 mybatis-plus:
   global-config:
@@ -31,3 +32,13 @@ mybatis-plus:
       id-type: auto
   configuration:
     map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+
+logging:
+  level:
+    root: INFO
+    com.smile.usermanagement: INFO
+    com.smile.usermanagement.mapper: DEBUG
+    org.mybatis: DEBUG
+    org.apache.ibatis: DEBUG
+    com.baomidou.mybatisplus: DEBUG

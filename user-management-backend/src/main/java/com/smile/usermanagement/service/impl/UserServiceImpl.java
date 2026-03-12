@@ -1,6 +1,8 @@
 package com.smile.usermanagement.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.smile.usermanagement.entity.User;
 import com.smile.usermanagement.mapper.UserMapper;
@@ -32,6 +34,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Override
     public List<User> listByOrgAndKeyword(Long orgId, String keyword) {
+        return list(buildQueryWrapper(orgId, keyword));
+    }
+
+    @Override
+    public IPage<User> pageByOrgAndKeyword(Long orgId, String keyword, long page, long size) {
+        long current = page <= 0 ? 1 : page;
+        long pageSize = size <= 0 ? 20 : Math.min(size, 200);
+        return page(new Page<>(current, pageSize), buildQueryWrapper(orgId, keyword));
+    }
+
+    private LambdaQueryWrapper<User> buildQueryWrapper(Long orgId, String keyword) {
         var principal = SecurityUtils.getCurrentUser();
         if (principal != null && orgId != null) {
             DataScopeService.Scope scope = dataScopeService.resolveUserModuleScope(principal.id());
@@ -59,7 +72,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                 .or().like(User::getEmail, keyword));
         }
         wrapper.orderByDesc(User::getId);
-        return list(wrapper);
+        return wrapper;
     }
 
     @Override

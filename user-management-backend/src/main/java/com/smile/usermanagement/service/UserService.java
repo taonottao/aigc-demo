@@ -1,5 +1,6 @@
 package com.smile.usermanagement.service;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.smile.usermanagement.entity.User;
 import java.util.List;
@@ -7,6 +8,8 @@ import java.util.List;
 public interface UserService extends IService<User> {
 
     List<User> listByOrgAndKeyword(Long orgId, String keyword);
+
+    IPage<User> pageByOrgAndKeyword(Long orgId, String keyword, long page, long size);
 
     User createUser(User user, List<Long> roleIds);
 

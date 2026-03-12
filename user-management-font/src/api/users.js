@@ -8,6 +8,16 @@ export function listUsers(params = {}) {
   return http(`/api/users${suffix}`)
 }
 
+export function pageUsers(params = {}) {
+  const search = new URLSearchParams()
+  if (params.orgId) search.set('orgId', String(params.orgId))
+  if (params.keyword) search.set('keyword', params.keyword)
+  if (params.page) search.set('page', String(params.page))
+  if (params.size) search.set('size', String(params.size))
+  const suffix = search.toString() ? `?${search.toString()}` : ''
+  return http(`/api/users/page${suffix}`)
+}
+
 export function createUser(payload) {
   return http('/api/users', {
     method: 'POST',

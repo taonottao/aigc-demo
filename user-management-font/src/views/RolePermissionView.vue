@@ -6,100 +6,70 @@
     </div>
     <div class="actions">
       <button v-if="hasPerm('role:add')" class="btn primary" @click="openRoleCreate">新增角色</button>
-      <button v-if="hasPerm('perm:save')" class="btn" :disabled="!selectedRole" @click="openRoleEdit">编辑角色</button>
-      <button v-if="hasPerm('perm:save')" class="btn" :disabled="!selectedRole" @click="saveRoleMenus">保存菜单绑定</button>
-      <button v-if="hasPerm('perm:save')" class="btn" :disabled="!selectedRole" @click="saveDataScopes">保存数据权限</button>
     </div>
   </header>
 
+  <section class="mini-grid">
+    <article class="mini-card">
+      <p>角色总数</p>
+      <h4>{{ rolePagination.total }}</h4>
+    </article>
+    <article class="mini-card">
+      <p>菜单节点</p>
+      <h4>{{ flatMenus.length }}</h4>
+    </article>
+    <article class="mini-card">
+      <p>当前角色绑定</p>
+      <h4>{{ selectedMenuIds.size }}</h4>
+    </article>
+  </section>
+
   <section class="grid">
-    <article class="card span-4">
+    <article class="card span-12">
       <h3>角色列表</h3>
+      <div class="actions" style="margin-bottom: 8px">
+        <input v-model.trim="roleKeyword" class="btn" placeholder="搜索角色名/编码" />
+        <button class="btn" @click="searchRoles">搜索</button>
+      </div>
       <p v-if="errorMessage" class="small" style="color: var(--danger)">{{ errorMessage }}</p>
       <table class="table">
-        <thead><tr><th>角色</th><th>编码</th><th>状态</th></tr></thead>
+        <thead><tr><th>角色</th><th>编码</th><th>状态</th><th>操作</th></tr></thead>
         <tbody>
-          <tr
-            v-for="row in roles"
-            :key="row.id"
-            :style="{ background: selectedRole?.id === row.id ? 'rgba(0,168,204,0.08)' : 'transparent', cursor: 'pointer' }"
-            @click="selectRole(row)"
-          >
+          <tr v-for="row in roles" :key="row.id" :style="{ background: selectedRole?.id === row.id ? 'rgba(0,168,204,0.08)' : 'transparent' }">
             <td>{{ row.name }}</td>
             <td>{{ row.code }}</td>
             <td><span :class="['badge', row.status === 1 ? 'ok' : 'warn']">{{ row.status === 1 ? '启用' : '禁用' }}</span></td>
-          </tr>
-          <tr v-if="!roles.length"><td colspan="3">暂无角色</td></tr>
-        </tbody>
-      </table>
-    </article>
-
-    <article class="card span-8">
-      <h3>菜单与按钮权限绑定</h3>
-      <p class="small">当前角色：{{ selectedRole ? `${selectedRole.name} (${selectedRole.code})` : '未选择' }}</p>
-      <table class="table">
-        <thead><tr><th>绑定</th><th>名称</th><th>类型</th><th>路由</th><th>权限标识</th></tr></thead>
-        <tbody>
-          <tr v-for="menu in flatMenus" :key="menu.id">
-            <td><input type="checkbox" :checked="selectedMenuIds.has(menu.id)" @change="toggleMenu(menu.id, $event.target.checked)" /></td>
-            <td>{{ menu.indent }}{{ menu.name }}</td>
-            <td>{{ menu.type }}</td>
-            <td>{{ menu.path || '-' }}</td>
-            <td>{{ menu.permCode || '-' }}</td>
-          </tr>
-          <tr v-if="!flatMenus.length"><td colspan="5">暂无菜单数据</td></tr>
-        </tbody>
-      </table>
-    </article>
-
-    <article class="card span-6">
-      <h3>数据权限规则（按模块）</h3>
-      <div class="actions" style="margin-bottom: 8px">
-        <button v-if="hasPerm('perm:save')" class="btn" @click="addScopeRow">新增规则</button>
-      </div>
-      <table class="table">
-        <thead><tr><th>模块编码</th><th>范围</th><th>操作</th></tr></thead>
-        <tbody>
-          <tr v-for="(row, idx) in scopeRows" :key="idx">
-            <td><input v-model.trim="row.moduleCode" placeholder="如 USER / ORDER" /></td>
             <td>
-              <select v-model="row.scope">
-                <option value="ALL">ALL（全部）</option>
-                <option value="ORG_AND_CHILDREN">ORG_AND_CHILDREN（本部门及子部门）</option>
-                <option value="ORG_ONLY">ORG_ONLY（仅本部门）</option>
-                <option value="SELF_ONLY">SELF_ONLY（仅本人）</option>
-              </select>
-            </td>
-            <td><button class="btn danger" @click="removeScopeRow(idx)">删除</button></td>
-          </tr>
-          <tr v-if="!scopeRows.length"><td colspan="3">暂无规则，点击“新增规则”</td></tr>
-        </tbody>
-      </table>
-    </article>
-
-    <article class="card span-6">
-      <h3>菜单管理（联调）</h3>
-      <div class="actions" style="margin-bottom: 8px">
-        <button v-if="hasPerm('perm:save')" class="btn" @click="openMenuCreate">新增菜单/按钮</button>
-        <button class="btn" @click="loadMenus">刷新菜单</button>
-      </div>
-      <table class="table">
-        <thead><tr><th>ID</th><th>名称</th><th>类型</th><th>父级</th><th>权限标识</th><th>操作</th></tr></thead>
-        <tbody>
-          <tr v-for="m in flatMenus" :key="`manage-${m.id}`">
-            <td>{{ m.id }}</td>
-            <td>{{ m.indent }}{{ m.name }}</td>
-            <td>{{ m.type }}</td>
-            <td>{{ m.parentId }}</td>
-            <td>{{ m.permCode || '-' }}</td>
-            <td>
-              <button v-if="hasPerm('perm:save')" class="btn" @click="openMenuEdit(m)">编辑</button>
-              <button v-if="hasPerm('perm:save')" class="btn danger" @click="removeMenu(m)">删除</button>
+              <div class="actions">
+                <button v-if="hasPerm('perm:save')" class="btn" @click="openRoleEdit(row)">编辑角色</button>
+                <button v-if="hasPerm('perm:save')" class="btn" @click="openMenuPermissionSettings(row)">菜单权限</button>
+                <button v-if="hasPerm('perm:save')" class="btn" @click="openDataScopeSettings(row)">数据权限</button>
+              </div>
             </td>
           </tr>
-          <tr v-if="!flatMenus.length"><td colspan="6">暂无菜单</td></tr>
+          <tr v-if="!roles.length"><td colspan="4">暂无角色</td></tr>
         </tbody>
       </table>
+      <div class="actions" style="margin-top: 10px; justify-content: space-between;">
+        <span class="small">共 {{ rolePagination.total }} 条，第 {{ rolePagination.page }} / {{ roleTotalPages }} 页</span>
+        <div class="actions">
+          <select v-model.number="rolePagination.size" @change="onRolePageSizeChange">
+            <option :value="10">10 / 页</option>
+            <option :value="20">20 / 页</option>
+            <option :value="50">50 / 页</option>
+          </select>
+          <button class="btn" :disabled="rolePagination.page <= 1" @click="changeRolePage(rolePagination.page - 1)">上一页</button>
+          <button
+            v-for="page in rolePageNumbers"
+            :key="`role-page-${page}`"
+            :class="['btn', rolePagination.page === page ? 'primary' : '']"
+            @click="changeRolePage(page)"
+          >
+            {{ page }}
+          </button>
+          <button class="btn" :disabled="rolePagination.page >= roleTotalPages" @click="changeRolePage(rolePagination.page + 1)">下一页</button>
+        </div>
+      </div>
     </article>
   </section>
 
@@ -124,37 +94,60 @@
     </article>
   </section>
 
-  <section v-if="showMenuModal" class="modal" @click.self="closeMenuModal">
-    <article class="modal-card">
-      <h3>{{ menuEditingId ? '编辑菜单/按钮' : '新增菜单/按钮' }}</h3>
-      <div class="form-grid">
-        <div class="field"><label>名称 *</label><input v-model.trim="menuForm.name" /></div>
-        <div class="field"><label>类型 *</label>
-          <select v-model="menuForm.type">
-            <option value="MENU">MENU</option>
-            <option value="BUTTON">BUTTON</option>
-          </select>
-        </div>
-        <div class="field"><label>父级ID</label>
-          <select v-model.number="menuForm.parentId">
-            <option :value="0">根节点</option>
-            <option v-for="opt in menuParentOptions" :key="opt.id" :value="opt.id">{{ opt.name }}</option>
-          </select>
-        </div>
-        <div class="field"><label>状态</label>
-          <select v-model.number="menuForm.status">
-            <option :value="1">启用</option>
-            <option :value="0">禁用</option>
-          </select>
-        </div>
-        <div class="field"><label>路由</label><input v-model.trim="menuForm.path" placeholder="MENU 可填，如 /users" /></div>
-        <div class="field"><label>图标</label><input v-model.trim="menuForm.icon" /></div>
-        <div class="field full"><label>权限标识</label><input v-model.trim="menuForm.permCode" placeholder="如 user:delete" /></div>
-        <div class="field"><label>排序号</label><input v-model.number="menuForm.sortNo" type="number" /></div>
+  <section v-if="showMenuPermModal" class="modal" @click.self="closeMenuPermModal">
+    <article class="modal-card permission-modal-card">
+      <h3>菜单权限：{{ selectedRole ? `${selectedRole.name} (${selectedRole.code})` : '-' }}</h3>
+      <div class="permission-body">
+        <table class="table">
+          <thead><tr><th>绑定</th><th>名称</th><th>类型</th><th>路由</th><th>权限标识</th></tr></thead>
+          <tbody>
+            <tr v-for="menu in flatMenus" :key="`menu-${menu.id}`">
+              <td><input type="checkbox" :checked="selectedMenuIds.has(menu.id)" @change="toggleMenu(menu.id, $event.target.checked)" /></td>
+              <td>{{ menu.indent }}{{ menu.name }}</td>
+              <td>{{ menu.type }}</td>
+              <td>{{ menu.path || '-' }}</td>
+              <td>{{ menu.permCode || '-' }}</td>
+            </tr>
+            <tr v-if="!flatMenus.length"><td colspan="5">暂无菜单数据</td></tr>
+          </tbody>
+        </table>
       </div>
       <div class="actions">
-        <button class="btn" @click="closeMenuModal">取消</button>
-        <button class="btn primary" @click="submitMenu">保存</button>
+        <button class="btn" @click="closeMenuPermModal">取消</button>
+        <button v-if="hasPerm('perm:save')" class="btn primary" @click="saveRoleMenus">保存菜单权限</button>
+      </div>
+    </article>
+  </section>
+
+  <section v-if="showDataScopeModal" class="modal" @click.self="closeDataScopeModal">
+    <article class="modal-card permission-modal-card">
+      <h3>数据权限：{{ selectedRole ? `${selectedRole.name} (${selectedRole.code})` : '-' }}</h3>
+      <div class="permission-body">
+        <div class="actions" style="margin-bottom: 8px">
+          <button v-if="hasPerm('perm:save')" class="btn" @click="addScopeRow">新增规则</button>
+        </div>
+        <table class="table">
+          <thead><tr><th>模块编码</th><th>范围</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-for="(row, idx) in scopeRows" :key="idx">
+              <td><input v-model.trim="row.moduleCode" placeholder="如 USER / ORDER" /></td>
+              <td>
+                <select v-model="row.scope">
+                  <option value="ALL">ALL（全部）</option>
+                  <option value="ORG_AND_CHILDREN">ORG_AND_CHILDREN（本部门及子部门）</option>
+                  <option value="ORG_ONLY">ORG_ONLY（仅本部门）</option>
+                  <option value="SELF_ONLY">SELF_ONLY（仅本人）</option>
+                </select>
+              </td>
+              <td><button class="btn danger" @click="removeScopeRow(idx)">删除</button></td>
+            </tr>
+            <tr v-if="!scopeRows.length"><td colspan="3">暂无规则，点击“新增规则”</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="actions">
+        <button class="btn" @click="closeDataScopeModal">取消</button>
+        <button v-if="hasPerm('perm:save')" class="btn primary" @click="saveDataScopes">保存数据权限</button>
       </div>
     </article>
   </section>
@@ -162,12 +155,12 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { createMenu, deleteMenu, getMenuTree, updateMenu } from '../api/menus'
+import { getMenuTree } from '../api/menus'
 import {
   createRole,
   getRoleDataScopes,
   getRoleMenuIds,
-  listRoles,
+  pageRoles,
   replaceRoleDataScopes,
   replaceRoleMenuIds,
   updateRole
@@ -175,6 +168,14 @@ import {
 
 const roles = ref([])
 const selectedRole = ref(null)
+const roleKeyword = ref('')
+const rolePagination = reactive({
+  page: 1,
+  size: 10,
+  total: 0
+})
+const roleTotalPages = computed(() => Math.max(1, Math.ceil((rolePagination.total || 0) / rolePagination.size)))
+const rolePageNumbers = computed(() => Array.from({ length: roleTotalPages.value }, (_, i) => i + 1))
 const menuTree = ref([])
 const selectedMenuIds = ref(new Set())
 const scopeRows = ref([])
@@ -182,6 +183,8 @@ const errorMessage = ref('')
 const permissions = ref([])
 
 const showRoleModal = ref(false)
+const showMenuPermModal = ref(false)
+const showDataScopeModal = ref(false)
 const roleEditingId = ref(null)
 const roleForm = reactive({
   name: '',
@@ -190,25 +193,7 @@ const roleForm = reactive({
   status: 1
 })
 
-const showMenuModal = ref(false)
-const menuEditingId = ref(null)
-const menuForm = reactive({
-  parentId: 0,
-  name: '',
-  path: '',
-  icon: '',
-  permCode: '',
-  type: 'MENU',
-  sortNo: 0,
-  status: 1
-})
-
 const flatMenus = computed(() => flattenMenus(menuTree.value))
-const menuParentOptions = computed(() => {
-  return flatMenus.value
-    .filter((x) => !menuEditingId.value || x.id !== menuEditingId.value)
-    .map((x) => ({ id: x.id, name: `${x.name} (ID:${x.id})` }))
-})
 
 function hasPerm(code) {
   return permissions.value.includes(code) || permissions.value.includes('ROLE_ADMIN')
@@ -223,7 +208,14 @@ function flattenMenus(nodes, level = 0, output = []) {
 }
 
 async function loadRoles() {
-  roles.value = (await listRoles()) || []
+  const data = await pageRoles({
+    page: rolePagination.page,
+    size: rolePagination.size,
+    keyword: roleKeyword.value || undefined
+  })
+  roles.value = data?.items || []
+  rolePagination.total = data?.total || 0
+  rolePagination.page = data?.page || rolePagination.page
 }
 
 async function loadMenus() {
@@ -248,6 +240,26 @@ async function selectRole(role) {
   }
 }
 
+async function openMenuPermissionSettings(role) {
+  if (!role) return
+  await selectRole(role)
+  showMenuPermModal.value = true
+}
+
+async function openDataScopeSettings(role) {
+  if (!role) return
+  await selectRole(role)
+  showDataScopeModal.value = true
+}
+
+function closeMenuPermModal() {
+  showMenuPermModal.value = false
+}
+
+function closeDataScopeModal() {
+  showDataScopeModal.value = false
+}
+
 function toggleMenu(menuId, checked) {
   const set = new Set(selectedMenuIds.value)
   if (checked) {
@@ -258,6 +270,22 @@ function toggleMenu(menuId, checked) {
   selectedMenuIds.value = set
 }
 
+function searchRoles() {
+  rolePagination.page = 1
+  loadRoles()
+}
+
+function changeRolePage(page) {
+  if (page < 1 || page > roleTotalPages.value) return
+  rolePagination.page = page
+  loadRoles()
+}
+
+function onRolePageSizeChange() {
+  rolePagination.page = 1
+  loadRoles()
+}
+
 async function saveRoleMenus() {
   if (!selectedRole.value) {
     errorMessage.value = '请先选择角色'
@@ -266,6 +294,7 @@ async function saveRoleMenus() {
   errorMessage.value = ''
   try {
     await replaceRoleMenuIds(selectedRole.value.id, Array.from(selectedMenuIds.value))
+    closeMenuPermModal()
   } catch (err) {
     errorMessage.value = err.message
   }
@@ -295,6 +324,7 @@ async function saveDataScopes() {
   try {
     await replaceRoleDataScopes(selectedRole.value.id, payload)
     await selectRole(selectedRole.value)
+    closeDataScopeModal()
   } catch (err) {
     errorMessage.value = err.message
   }
@@ -315,14 +345,16 @@ function openRoleCreate() {
   showRoleModal.value = true
 }
 
-function openRoleEdit() {
-  if (!selectedRole.value) return
-  roleEditingId.value = selectedRole.value.id
+function openRoleEdit(role = null) {
+  const target = role || selectedRole.value
+  if (!target) return
+  selectedRole.value = target
+  roleEditingId.value = target.id
   Object.assign(roleForm, {
-    name: selectedRole.value.name || '',
-    code: selectedRole.value.code || '',
-    description: selectedRole.value.description || '',
-    status: selectedRole.value.status ?? 1
+    name: target.name || '',
+    code: target.code || '',
+    description: target.description || '',
+    status: target.status ?? 1
   })
   showRoleModal.value = true
 }
@@ -353,97 +385,18 @@ async function submitRole() {
     }
     showRoleModal.value = false
     await loadRoles()
+    if (!roles.value.length) {
+      selectedRole.value = null
+      return
+    }
     if (selectedRole.value) {
       const hit = roles.value.find((x) => x.id === selectedRole.value.id)
       if (hit) {
         await selectRole(hit)
+        return
       }
     }
-  } catch (err) {
-    errorMessage.value = err.message
-  }
-}
-
-function resetMenuForm() {
-  Object.assign(menuForm, {
-    parentId: 0,
-    name: '',
-    path: '',
-    icon: '',
-    permCode: '',
-    type: 'MENU',
-    sortNo: 0,
-    status: 1
-  })
-}
-
-function openMenuCreate() {
-  menuEditingId.value = null
-  resetMenuForm()
-  showMenuModal.value = true
-}
-
-function openMenuEdit(menu) {
-  menuEditingId.value = menu.id
-  Object.assign(menuForm, {
-    parentId: menu.parentId ?? 0,
-    name: menu.name || '',
-    path: menu.path || '',
-    icon: menu.icon || '',
-    permCode: menu.permCode || '',
-    type: menu.type || 'MENU',
-    sortNo: menu.sortNo ?? 0,
-    status: menu.status ?? 1
-  })
-  showMenuModal.value = true
-}
-
-function closeMenuModal() {
-  showMenuModal.value = false
-}
-
-async function submitMenu() {
-  if (!menuForm.name || !menuForm.type) {
-    errorMessage.value = '菜单名称和类型不能为空'
-    return
-  }
-
-  const payload = {
-    parentId: menuForm.parentId ?? 0,
-    name: menuForm.name,
-    path: menuForm.path || null,
-    icon: menuForm.icon || null,
-    permCode: menuForm.permCode || null,
-    type: menuForm.type,
-    sortNo: menuForm.sortNo ?? 0,
-    status: menuForm.status ?? 1
-  }
-
-  errorMessage.value = ''
-  try {
-    if (menuEditingId.value) {
-      await updateMenu(menuEditingId.value, payload)
-    } else {
-      await createMenu(payload)
-    }
-    showMenuModal.value = false
-    await loadMenus()
-  } catch (err) {
-    errorMessage.value = err.message
-  }
-}
-
-async function removeMenu(menu) {
-  if (!window.confirm(`确认删除菜单 ${menu.name} 吗？`)) {
-    return
-  }
-  errorMessage.value = ''
-  try {
-    await deleteMenu(menu.id)
-    await loadMenus()
-    if (selectedRole.value) {
-      await selectRole(selectedRole.value)
-    }
+    await selectRole(roles.value[0])
   } catch (err) {
     errorMessage.value = err.message
   }
@@ -466,3 +419,16 @@ onMounted(async () => {
   }
 })
 </script>
+
+<style scoped>
+.permission-modal-card {
+  width: min(1160px, 100%);
+}
+
+.permission-body {
+  margin: 12px 0;
+  max-height: 68vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+</style>

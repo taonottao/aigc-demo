@@ -10,6 +10,21 @@
     </div>
   </header>
 
+  <section class="mini-grid">
+    <article class="mini-card">
+      <p>今日访问</p>
+      <h4>8,942</h4>
+    </article>
+    <article class="mini-card">
+      <p>待审批事项</p>
+      <h4>27</h4>
+    </article>
+    <article class="mini-card">
+      <p>系统健康度</p>
+      <h4>98.4%</h4>
+    </article>
+  </section>
+
   <section class="grid">
     <article class="card span-3"><h3>组织总数</h3><p class="kpi">36</p><span class="badge ok">树形结构正常</span></article>
     <article class="card span-3"><h3>启用用户</h3><p class="kpi">1284</p><span class="badge ok">在线 214</span></article>

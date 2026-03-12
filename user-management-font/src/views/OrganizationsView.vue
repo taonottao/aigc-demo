@@ -2,21 +2,37 @@
   <header class="topbar">
     <div>
       <div class="title">组织管理</div>
-      <div class="meta">组织树维护、父子关系调整、成员增减；所有操作直连后端接口</div>
+      <div class="meta">组织树维护、父子关系调整；成员管理通过独立弹窗操作</div>
     </div>
     <div class="actions">
       <button v-if="hasPerm('org:add')" class="btn primary" @click="openCreate(selected.id)">新增子组织</button>
       <button v-if="hasPerm('org:edit')" class="btn" @click="openEdit(selected)">编辑当前组织</button>
       <button v-if="hasPerm('org:delete')" class="btn danger" @click="removeOrg(selected)">删除当前组织</button>
+      <button v-if="hasPerm('user:edit')" class="btn" :disabled="!selected.id" @click="openMemberModal">成员管理</button>
       <button class="btn" @click="fetchOrgTree">刷新</button>
     </div>
   </header>
+
+  <section class="mini-grid">
+    <article class="mini-card">
+      <p>组织总数</p>
+      <h4>{{ orgNodeCount }}</h4>
+    </article>
+    <article class="mini-card">
+      <p>当前子组织</p>
+      <h4>{{ selectedChildren.length }}</h4>
+    </article>
+    <article class="mini-card">
+      <p>当前组织成员</p>
+      <h4>{{ orgMemberIdSet.size }}</h4>
+    </article>
+  </section>
 
   <section class="split-shell">
     <article class="tree-panel">
       <h3>组织树</h3>
       <OrgTree :nodes="orgTree" :selected-id="selected.id" @select="selectNode" />
-      <p class="small">当前节点：{{ selected.name }}（ID: {{ selected.id || '-' }} / CODE: {{ selected.code || '-' }}）</p>
+      <p class="small">当前节点：{{ selected.name }}（CODE: {{ selected.code || '-' }}）</p>
       <p v-if="errorMessage" class="small" style="color: var(--danger)">{{ errorMessage }}</p>
     </article>
 
@@ -40,28 +56,6 @@
             </td>
           </tr>
           <tr v-if="!selectedChildren.length"><td colspan="6">当前节点暂无子组织</td></tr>
-        </tbody>
-      </table>
-
-      <h3 style="margin-top: 16px">{{ selected.name }} - 直属成员</h3>
-      <div class="actions" style="margin-bottom: 8px">
-        <input v-model.number="memberUserId" class="btn" type="number" placeholder="输入用户ID后回车添加" @keyup.enter="addMemberById" />
-        <button v-if="hasPerm('user:edit')" class="btn" @click="addMemberById">添加成员</button>
-        <button class="btn" @click="fetchOrgUsers">刷新成员</button>
-      </div>
-      <table class="table">
-        <thead><tr><th>ID</th><th>用户名</th><th>姓名</th><th>手机号</th><th>操作</th></tr></thead>
-        <tbody>
-          <tr v-for="u in orgUsers" :key="u.id">
-            <td>{{ u.id }}</td>
-            <td>{{ u.username }}</td>
-            <td>{{ u.realName }}</td>
-            <td>{{ u.phone || '-' }}</td>
-            <td>
-              <button v-if="hasPerm('user:edit')" class="btn danger" @click="removeMember(u.id)">移除</button>
-            </td>
-          </tr>
-          <tr v-if="!orgUsers.length"><td colspan="5">当前组织暂无直属成员</td></tr>
         </tbody>
       </table>
     </article>
@@ -94,6 +88,71 @@
       </div>
     </article>
   </section>
+
+  <section v-if="showMemberModal" class="modal" @click.self="closeMemberModal">
+    <article class="modal-card member-modal-card">
+      <h3>成员管理：{{ selected.name }}</h3>
+      <div class="actions" style="margin-bottom: 10px">
+        <input v-model.trim="memberKeyword" class="btn" placeholder="搜索用户名/姓名/手机号" @keyup.enter="searchMembers" />
+        <button class="btn" @click="searchMembers">搜索</button>
+        <button class="btn" @click="reloadMembers">刷新</button>
+      </div>
+
+      <div class="member-table-wrap">
+        <table class="table member-modal-table">
+          <thead><tr><th>用户名</th><th>姓名</th><th>手机号</th><th>归属状态</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr v-if="memberLoading"><td colspan="5">加载中...</td></tr>
+            <tr v-for="u in memberUsers" :key="u.id">
+              <td>{{ u.username }}</td>
+              <td>{{ u.realName }}</td>
+              <td>{{ u.phone || '-' }}</td>
+              <td>
+                <span v-if="isMember(u.id)" class="badge ok">已在本组织</span>
+                <span v-else class="badge warn">未在本组织</span>
+              </td>
+              <td>
+                <button
+                  v-if="hasPerm('user:edit') && !isMember(u.id)"
+                  class="btn"
+                  :disabled="memberActionLoadingId === u.id"
+                  @click="addMember(u.id)"
+                >添加</button>
+                <button
+                  v-if="hasPerm('user:edit') && isMember(u.id)"
+                  class="btn danger"
+                  :disabled="memberActionLoadingId === u.id"
+                  @click="removeMember(u.id)"
+                >移除</button>
+              </td>
+            </tr>
+            <tr v-if="!memberLoading && !memberUsers.length"><td colspan="5">暂无数据</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="actions" style="margin-top: 10px; justify-content: space-between;">
+        <span class="small">共 {{ memberPagination.total }} 条，第 {{ memberPagination.page }} / {{ memberTotalPages }} 页</span>
+        <div class="actions">
+          <select v-model.number="memberPagination.size" @change="onMemberPageSizeChange">
+            <option :value="10">10 / 页</option>
+          </select>
+          <button class="btn" :disabled="memberPagination.page <= 1" @click="changeMemberPage(memberPagination.page - 1)">上一页</button>
+          <button
+            v-for="page in memberPageNumbers"
+            :key="`member-page-${page}`"
+            :class="['btn', memberPagination.page === page ? 'primary' : '']"
+            @click="changeMemberPage(page)"
+          >{{ page }}</button>
+          <button class="btn" :disabled="memberPagination.page >= memberTotalPages" @click="changeMemberPage(memberPagination.page + 1)">下一页</button>
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top: 10px">
+        <button class="btn" @click="closeMemberModal">关闭</button>
+      </div>
+    </article>
+  </section>
 </template>
 
 <script setup>
@@ -109,11 +168,11 @@ import {
   removeUserFromOrg,
   updateOrg
 } from '../api/orgs'
+import { pageUsers } from '../api/users'
 
 const orgTree = ref([])
 const selected = ref({ id: 1, name: '集团总部', code: 'HQ', children: [] })
-const orgUsers = ref([])
-const memberUserId = ref(null)
+const orgMemberIdSet = ref(new Set())
 const errorMessage = ref('')
 const permissions = ref([])
 
@@ -129,13 +188,27 @@ const form = reactive({
   status: 1
 })
 
+const showMemberModal = ref(false)
+const memberKeyword = ref('')
+const memberLoading = ref(false)
+const memberActionLoadingId = ref(null)
+const memberUsers = ref([])
+const memberPagination = reactive({
+  page: 1,
+  size: 10,
+  total: 0
+})
+
 const selectedChildren = computed(() => selected.value?.children || [])
+const orgNodeCount = computed(() => flattenOrgTree(orgTree.value, []).length)
+const memberTotalPages = computed(() => Math.max(1, Math.ceil((memberPagination.total || 0) / memberPagination.size)))
+const memberPageNumbers = computed(() => Array.from({ length: memberTotalPages.value }, (_, i) => i + 1))
 
 const orgOptions = computed(() => {
   const list = [{ id: 0, name: '根节点' }]
   for (const node of flattenOrgTree(orgTree.value)) {
     if (!editingId.value || node.id !== editingId.value) {
-      list.push({ id: node.id, name: `${node.name} (ID:${node.id})` })
+      list.push({ id: node.id, name: node.name })
     }
   }
   return list
@@ -155,7 +228,7 @@ function flattenOrgTree(nodes, output = []) {
 
 function selectNode(node) {
   selected.value = node
-  fetchOrgUsers()
+  fetchCurrentOrgMembers()
 }
 
 async function fetchOrgTree(preserveId = null) {
@@ -165,26 +238,27 @@ async function fetchOrgTree(preserveId = null) {
     orgTree.value = tree || []
     if (!orgTree.value.length) {
       selected.value = { id: null, name: '无组织', children: [] }
-      orgUsers.value = []
+      orgMemberIdSet.value = new Set()
       return
     }
 
     const targetId = preserveId || selected.value?.id || orgTree.value[0].id
     const hit = flattenOrgTree(orgTree.value).find((x) => x.id === targetId)
     selected.value = hit || orgTree.value[0]
-    await fetchOrgUsers()
+    await fetchCurrentOrgMembers()
   } catch (err) {
     errorMessage.value = err.message
   }
 }
 
-async function fetchOrgUsers() {
+async function fetchCurrentOrgMembers() {
   if (!selected.value?.id) {
-    orgUsers.value = []
+    orgMemberIdSet.value = new Set()
     return
   }
   try {
-    orgUsers.value = (await listOrgUsers(selected.value.id)) || []
+    const users = (await listOrgUsers(selected.value.id)) || []
+    orgMemberIdSet.value = new Set(users.map((u) => u.id))
   } catch (err) {
     errorMessage.value = err.message
   }
@@ -312,29 +386,89 @@ async function moveChild(row, delta) {
   }
 }
 
-async function addMemberById() {
-  if (!selected.value?.id || !memberUserId.value) {
-    errorMessage.value = '请先选择组织并输入用户ID'
-    return
-  }
+function isMember(userId) {
+  return orgMemberIdSet.value.has(userId)
+}
+
+async function fetchMemberUsers() {
+  memberLoading.value = true
   errorMessage.value = ''
   try {
-    await addUserToOrg(selected.value.id, memberUserId.value)
-    memberUserId.value = null
-    await fetchOrgUsers()
+    const data = await pageUsers({
+      page: memberPagination.page,
+      size: memberPagination.size,
+      keyword: memberKeyword.value || undefined
+    })
+    memberUsers.value = data?.items || []
+    memberPagination.total = data?.total || 0
+    memberPagination.page = data?.page || memberPagination.page
   } catch (err) {
     errorMessage.value = err.message
+  } finally {
+    memberLoading.value = false
+  }
+}
+
+async function openMemberModal() {
+  if (!selected.value?.id) {
+    errorMessage.value = '请先选择组织'
+    return
+  }
+  memberKeyword.value = ''
+  memberPagination.page = 1
+  await Promise.all([fetchCurrentOrgMembers(), fetchMemberUsers()])
+  showMemberModal.value = true
+}
+
+function closeMemberModal() {
+  showMemberModal.value = false
+}
+
+function searchMembers() {
+  memberPagination.page = 1
+  fetchMemberUsers()
+}
+
+function reloadMembers() {
+  Promise.all([fetchCurrentOrgMembers(), fetchMemberUsers()])
+}
+
+function changeMemberPage(page) {
+  if (page < 1 || page > memberTotalPages.value) return
+  memberPagination.page = page
+  fetchMemberUsers()
+}
+
+function onMemberPageSizeChange() {
+  memberPagination.page = 1
+  fetchMemberUsers()
+}
+
+async function addMember(userId) {
+  if (!selected.value?.id) return
+  memberActionLoadingId.value = userId
+  errorMessage.value = ''
+  try {
+    await addUserToOrg(selected.value.id, userId)
+    await fetchCurrentOrgMembers()
+  } catch (err) {
+    errorMessage.value = err.message
+  } finally {
+    memberActionLoadingId.value = null
   }
 }
 
 async function removeMember(userId) {
   if (!selected.value?.id) return
+  memberActionLoadingId.value = userId
   errorMessage.value = ''
   try {
     await removeUserFromOrg(selected.value.id, userId)
-    await fetchOrgUsers()
+    await fetchCurrentOrgMembers()
   } catch (err) {
     errorMessage.value = err.message
+  } finally {
+    memberActionLoadingId.value = null
   }
 }
 
@@ -347,3 +481,58 @@ onMounted(async () => {
   await fetchOrgTree()
 })
 </script>
+
+<style scoped>
+.split-shell {
+  grid-template-columns: minmax(240px, 280px) 1fr;
+}
+
+.member-modal-card {
+  width: min(1120px, 100%);
+}
+
+.member-table-wrap {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.member-modal-table {
+  width: 100%;
+  table-layout: fixed;
+  margin-top: 0;
+}
+
+.member-modal-table thead,
+.member-modal-table tbody tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.member-modal-table tbody {
+  display: block;
+  height: 440px;
+  min-height: 440px;
+  max-height: 440px;
+  overflow-y: auto;
+}
+
+.member-modal-table thead tr,
+.member-modal-table tbody tr {
+  height: 44px;
+}
+
+.member-modal-table th,
+.member-modal-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 1040px) {
+  .split-shell {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

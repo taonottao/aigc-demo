@@ -8,6 +8,7 @@ import com.smile.usermanagement.security.UserPrincipal;
 import com.smile.usermanagement.service.AuditService;
 import com.smile.usermanagement.service.AuthService;
 import com.smile.usermanagement.service.UserService;
+import com.smile.usermanagement.web.PageResult;
 import com.smile.usermanagement.web.ReplaceIdsRequest;
 import jakarta.validation.Valid;
 import java.io.BufferedReader;
@@ -53,6 +54,15 @@ public class UserController {
     public List<User> listUsers(@RequestParam(required = false) Long orgId,
                                 @RequestParam(required = false) String keyword) {
         return userService.listByOrgAndKeyword(orgId, keyword);
+    }
+
+    @GetMapping("/page")
+    @PreAuthorize("hasAuthority('user:view')")
+    public PageResult<User> pageUsers(@RequestParam(required = false) Long orgId,
+                                      @RequestParam(required = false) String keyword,
+                                      @RequestParam(defaultValue = "1") Long page,
+                                      @RequestParam(defaultValue = "20") Long size) {
+        return PageResult.from(userService.pageByOrgAndKeyword(orgId, keyword, page, size));
     }
 
     @GetMapping("/{id}")

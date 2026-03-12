@@ -5,10 +5,25 @@
       <div class="meta">登录日志、关键操作日志、敏感操作二次验证、密码策略</div>
     </div>
     <div class="actions">
-      <button class="btn">导出审计日志</button>
+      <button class="btn" @click="reload">刷新日志</button>
       <button class="btn primary">启用二次验证</button>
     </div>
   </header>
+
+  <section class="mini-grid">
+    <article class="mini-card">
+      <p>登录日志总数</p>
+      <h4>{{ loginPagination.total }}</h4>
+    </article>
+    <article class="mini-card">
+      <p>操作日志总数</p>
+      <h4>{{ opPagination.total }}</h4>
+    </article>
+    <article class="mini-card">
+      <p>当前页失败登录</p>
+      <h4>{{ failedLoginCount }}</h4>
+    </article>
+  </section>
 
   <section class="grid">
     <article class="card span-4">
@@ -38,6 +53,26 @@
           <tr v-if="!loginLogs.length"><td colspan="5">暂无数据</td></tr>
         </tbody>
       </table>
+      <div class="actions" style="margin-top: 10px; justify-content: space-between;">
+        <span class="small">共 {{ loginPagination.total }} 条，第 {{ loginPagination.page }} / {{ loginTotalPages }} 页</span>
+        <div class="actions">
+          <select v-model.number="loginPagination.size" @change="onLoginSizeChange">
+            <option :value="10">10 / 页</option>
+            <option :value="20">20 / 页</option>
+            <option :value="50">50 / 页</option>
+          </select>
+          <button class="btn" :disabled="loginPagination.page <= 1" @click="changeLoginPage(loginPagination.page - 1)">上一页</button>
+          <button
+            v-for="page in loginPageNumbers"
+            :key="`login-page-${page}`"
+            :class="['btn', loginPagination.page === page ? 'primary' : '']"
+            @click="changeLoginPage(page)"
+          >
+            {{ page }}
+          </button>
+          <button class="btn" :disabled="loginPagination.page >= loginTotalPages" @click="changeLoginPage(loginPagination.page + 1)">下一页</button>
+        </div>
+      </div>
     </article>
 
     <article class="card span-12">
@@ -55,21 +90,104 @@
           <tr v-if="!opLogs.length"><td colspan="5">暂无数据</td></tr>
         </tbody>
       </table>
+      <div class="actions" style="margin-top: 10px; justify-content: space-between;">
+        <span class="small">共 {{ opPagination.total }} 条，第 {{ opPagination.page }} / {{ opTotalPages }} 页</span>
+        <div class="actions">
+          <select v-model.number="opPagination.size" @change="onOpSizeChange">
+            <option :value="10">10 / 页</option>
+            <option :value="20">20 / 页</option>
+            <option :value="50">50 / 页</option>
+          </select>
+          <button class="btn" :disabled="opPagination.page <= 1" @click="changeOpPage(opPagination.page - 1)">上一页</button>
+          <button
+            v-for="page in opPageNumbers"
+            :key="`op-page-${page}`"
+            :class="['btn', opPagination.page === page ? 'primary' : '']"
+            @click="changeOpPage(page)"
+          >
+            {{ page }}
+          </button>
+          <button class="btn" :disabled="opPagination.page >= opTotalPages" @click="changeOpPage(opPagination.page + 1)">下一页</button>
+        </div>
+      </div>
     </article>
   </section>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import { getLoginLogs, getOperationLogs } from '../api/logs'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { pageLoginLogs, pageOperationLogs } from '../api/logs'
 
 const loginLogs = ref([])
 const opLogs = ref([])
 
+const loginPagination = reactive({
+  page: 1,
+  size: 10,
+  total: 0
+})
+const opPagination = reactive({
+  page: 1,
+  size: 10,
+  total: 0
+})
+
+const loginTotalPages = computed(() => Math.max(1, Math.ceil((loginPagination.total || 0) / loginPagination.size)))
+const opTotalPages = computed(() => Math.max(1, Math.ceil((opPagination.total || 0) / opPagination.size)))
+const failedLoginCount = computed(() => loginLogs.value.filter((x) => !x.success).length)
+const loginPageNumbers = computed(() => Array.from({ length: loginTotalPages.value }, (_, i) => i + 1))
+const opPageNumbers = computed(() => Array.from({ length: opTotalPages.value }, (_, i) => i + 1))
+
+async function loadLoginLogs() {
+  const data = await pageLoginLogs({
+    page: loginPagination.page,
+    size: loginPagination.size
+  })
+  loginLogs.value = data?.items || []
+  loginPagination.total = data?.total || 0
+  loginPagination.page = data?.page || loginPagination.page
+}
+
+async function loadOperationLogs() {
+  const data = await pageOperationLogs({
+    page: opPagination.page,
+    size: opPagination.size
+  })
+  opLogs.value = data?.items || []
+  opPagination.total = data?.total || 0
+  opPagination.page = data?.page || opPagination.page
+}
+
+function changeLoginPage(page) {
+  if (page < 1 || page > loginTotalPages.value) return
+  loginPagination.page = page
+  loadLoginLogs()
+}
+
+function changeOpPage(page) {
+  if (page < 1 || page > opTotalPages.value) return
+  opPagination.page = page
+  loadOperationLogs()
+}
+
+function onLoginSizeChange() {
+  loginPagination.page = 1
+  loadLoginLogs()
+}
+
+function onOpSizeChange() {
+  opPagination.page = 1
+  loadOperationLogs()
+}
+
+function reload() {
+  loadLoginLogs()
+  loadOperationLogs()
+}
+
 onMounted(async () => {
   try {
-    loginLogs.value = (await getLoginLogs()) || []
-    opLogs.value = (await getOperationLogs()) || []
+    await Promise.all([loadLoginLogs(), loadOperationLogs()])
   } catch (e) {
     // ignore
   }
