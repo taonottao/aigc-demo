@@ -8,6 +8,7 @@ import com.smile.usermanagement.entity.User;
 import com.smile.usermanagement.mapper.UserMapper;
 import com.smile.usermanagement.mapper.UserRoleMapper;
 import com.smile.usermanagement.security.SecurityUtils;
+import com.smile.usermanagement.service.PermissionService;
 import com.smile.usermanagement.service.UserService;
 import com.smile.usermanagement.service.DataScopeService;
 import java.time.LocalDateTime;
@@ -25,11 +26,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     private final PasswordEncoder passwordEncoder;
     private final UserRoleMapper userRoleMapper;
     private final DataScopeService dataScopeService;
+    private final PermissionService permissionService;
 
-    public UserServiceImpl(PasswordEncoder passwordEncoder, UserRoleMapper userRoleMapper, DataScopeService dataScopeService) {
+    public UserServiceImpl(PasswordEncoder passwordEncoder, UserRoleMapper userRoleMapper, DataScopeService dataScopeService,
+                           PermissionService permissionService) {
         this.passwordEncoder = passwordEncoder;
         this.userRoleMapper = userRoleMapper;
         this.dataScopeService = dataScopeService;
+        this.permissionService = permissionService;
     }
 
     @Override
@@ -46,10 +50,16 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     private LambdaQueryWrapper<User> buildQueryWrapper(Long orgId, String keyword) {
         var principal = SecurityUtils.getCurrentUser();
+        DataScopeService.Scope scope = null;
+        Set<Long> accessibleOrgIds = Set.of();
+        if (principal != null) {
+            scope = dataScopeService.resolveUserModuleScope(principal.id());
+            if (scope == DataScopeService.Scope.ORG_ONLY || scope == DataScopeService.Scope.ORG_AND_CHILDREN) {
+                accessibleOrgIds = dataScopeService.resolveAccessibleOrgIds(principal.id(), scope);
+            }
+        }
         if (principal != null && orgId != null) {
-            DataScopeService.Scope scope = dataScopeService.resolveUserModuleScope(principal.id());
             if (scope != DataScopeService.Scope.ALL) {
-                Set<Long> accessibleOrgIds = dataScopeService.resolveAccessibleOrgIds(principal.id());
                 if (scope == DataScopeService.Scope.ORG_ONLY || scope == DataScopeService.Scope.ORG_AND_CHILDREN) {
                     if (!accessibleOrgIds.contains(orgId)) {
                         throw new AccessDeniedException("No data permission for orgId=" + orgId);
@@ -62,7 +72,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         if (orgId != null) {
             wrapper.eq(User::getOrgId, orgId);
         }
-        if (principal != null && dataScopeService.resolveUserModuleScope(principal.id()) == DataScopeService.Scope.SELF_ONLY) {
+        if (principal != null && scope == DataScopeService.Scope.SELF_ONLY) {
             wrapper.eq(User::getId, principal.id());
         }
         if (StringUtils.hasText(keyword)) {
@@ -145,6 +155,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     public void replaceRoles(Long userId, List<Long> roleIds) {
         userRoleMapper.deleteByUserId(userId);
         if (roleIds == null) {
+            permissionService.evictUserCache(userId);
             return;
         }
         for (Long roleId : roleIds) {
@@ -153,6 +164,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             }
             userRoleMapper.insert(userId, roleId);
         }
+        permissionService.evictUserCache(userId);
     }
 
     @Override
@@ -163,6 +175,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             return false;
         }
         userRoleMapper.deleteByUserId(userId);
+        permissionService.evictUserCache(userId);
         return removeById(userId);
     }
 

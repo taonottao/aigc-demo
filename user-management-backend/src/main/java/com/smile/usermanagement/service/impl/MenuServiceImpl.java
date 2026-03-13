@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.smile.usermanagement.entity.Menu;
 import com.smile.usermanagement.mapper.MenuMapper;
 import com.smile.usermanagement.service.MenuService;
+import com.smile.usermanagement.service.PermissionService;
 import com.smile.usermanagement.web.MenuNode;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -17,6 +18,11 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class MenuServiceImpl extends ServiceImpl<MenuMapper, Menu> implements MenuService {
+    private final PermissionService permissionService;
+
+    public MenuServiceImpl(PermissionService permissionService) {
+        this.permissionService = permissionService;
+    }
 
     @Override
     public List<MenuNode> getMenuTree() {
@@ -64,6 +70,7 @@ public class MenuServiceImpl extends ServiceImpl<MenuMapper, Menu> implements Me
         menu.setCreatedAt(now);
         menu.setUpdatedAt(now);
         save(menu);
+        permissionService.evictAllCache();
         return menu;
     }
 
@@ -83,6 +90,7 @@ public class MenuServiceImpl extends ServiceImpl<MenuMapper, Menu> implements Me
         existing.setStatus(menu.getStatus());
         existing.setUpdatedAt(LocalDateTime.now());
         updateById(existing);
+        permissionService.evictAllCache();
         return existing;
     }
 
@@ -96,6 +104,7 @@ public class MenuServiceImpl extends ServiceImpl<MenuMapper, Menu> implements Me
         if (!removed) {
             throw new IllegalArgumentException("Menu not found: " + id);
         }
+        permissionService.evictAllCache();
     }
 
     private void sortTree(List<MenuNode> nodes) {
@@ -105,4 +114,3 @@ public class MenuServiceImpl extends ServiceImpl<MenuMapper, Menu> implements Me
         }
     }
 }
-

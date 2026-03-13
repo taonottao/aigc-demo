@@ -11,5 +11,8 @@ public interface PermissionService {
     List<Menu> listUserMenus(Long userId);
 
     List<String> listUserPermissions(Long userId);
-}
 
+    void evictUserCache(Long userId);
+
+    void evictAllCache();
+}

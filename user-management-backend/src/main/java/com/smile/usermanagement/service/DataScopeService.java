@@ -16,5 +16,6 @@ public interface DataScopeService {
     Scope resolveUserModuleScope(Long userId);
 
     Set<Long> resolveAccessibleOrgIds(Long userId);
-}
 
+    Set<Long> resolveAccessibleOrgIds(Long userId, Scope scope);
+}

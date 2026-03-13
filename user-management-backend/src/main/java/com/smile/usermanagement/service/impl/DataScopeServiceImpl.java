@@ -51,6 +51,11 @@ public class DataScopeServiceImpl implements DataScopeService {
     @Override
     public Set<Long> resolveAccessibleOrgIds(Long userId) {
         Scope scope = resolveUserModuleScope(userId);
+        return resolveAccessibleOrgIds(userId, scope);
+    }
+
+    @Override
+    public Set<Long> resolveAccessibleOrgIds(Long userId, Scope scope) {
         if (scope == Scope.ALL) {
             return Set.of();
         }
@@ -88,4 +93,3 @@ public class DataScopeServiceImpl implements DataScopeService {
         };
     }
 }
-

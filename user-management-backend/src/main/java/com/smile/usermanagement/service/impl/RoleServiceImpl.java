@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.smile.usermanagement.entity.Role;
 import com.smile.usermanagement.mapper.RoleMapper;
 import com.smile.usermanagement.mapper.RoleMenuMapper;
+import com.smile.usermanagement.service.PermissionService;
 import com.smile.usermanagement.service.RoleService;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -15,9 +16,11 @@ import org.springframework.util.StringUtils;
 public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements RoleService {
 
     private final RoleMenuMapper roleMenuMapper;
+    private final PermissionService permissionService;
 
-    public RoleServiceImpl(RoleMenuMapper roleMenuMapper) {
+    public RoleServiceImpl(RoleMenuMapper roleMenuMapper, PermissionService permissionService) {
         this.roleMenuMapper = roleMenuMapper;
+        this.permissionService = permissionService;
     }
 
     @Override
@@ -50,6 +53,7 @@ public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements Ro
         existing.setStatus(role.getStatus());
         existing.setUpdatedAt(LocalDateTime.now());
         updateById(existing);
+        permissionService.evictAllCache();
         return existing;
     }
 
@@ -61,6 +65,7 @@ public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements Ro
         }
         roleMenuMapper.deleteByRoleId(roleId);
         if (menuIds == null) {
+            permissionService.evictAllCache();
             return;
         }
         for (Long menuId : menuIds) {
@@ -69,6 +74,7 @@ public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements Ro
             }
             roleMenuMapper.insert(roleId, menuId);
         }
+        permissionService.evictAllCache();
     }
 
     @Override
@@ -90,4 +96,3 @@ public class RoleServiceImpl extends ServiceImpl<RoleMapper, Role> implements Ro
         }
     }
 }
-
