@@ -4,3 +4,5 @@ __pycache__/
 *.py[cod]
 user-management-font/node_modules/
 user-management-backend/logs/
+logs/
+*.log
